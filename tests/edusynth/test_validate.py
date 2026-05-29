@@ -1,8 +1,8 @@
 """Tests voor validate.py — Report en afstandsmetrieken."""
 
 import pandas as pd
-import pytest
-from edusynth.validate import evaluate, _tv_distance, Report
+
+from edusynth.validate import Report, _tv_distance, evaluate
 
 
 def _make_df():
