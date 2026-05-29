@@ -5,6 +5,10 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -19,7 +23,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p_synth.add_argument("input", type=Path, help="Pad naar het inputbestand (CSV of Parquet).")
     p_synth.add_argument("schema", type=Path, help="Pad naar het schema YAML-bestand.")
     p_synth.add_argument("output", type=Path, help="Pad voor het outputbestand (CSV of Parquet).")
-    p_synth.add_argument("--rows", type=int, default=1000, help="Aantal te genereren rijen (standaard: 1000).")
+    p_synth.add_argument(
+        "--rows", type=int, default=1000, help="Aantal te genereren rijen (standaard: 1000)."
+    )
 
     # edusynth validate
     p_val = sub.add_parser("validate", help="Vergelijk echte en synthetische data.")
@@ -39,7 +45,6 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def _cmd_synthesize(args: argparse.Namespace) -> None:
-    import pandas as pd
     from edusynth.synthesize import fit, sample
 
     data = _read(args.input)
@@ -61,14 +66,14 @@ def _cmd_validate(args: argparse.Namespace) -> None:
     sys.exit(0 if report.passed() else 1)
 
 
-def _read(path: Path) -> "pd.DataFrame":
+def _read(path: Path) -> pd.DataFrame:
     import pandas as pd
     if path.suffix == ".parquet":
         return pd.read_parquet(path)
     return pd.read_csv(path)
 
 
-def _write(df: "pd.DataFrame", path: Path) -> None:
+def _write(df: pd.DataFrame, path: Path) -> None:
     if path.suffix == ".parquet":
         df.to_parquet(path, index=False)
     else:

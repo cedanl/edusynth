@@ -27,12 +27,13 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/edusynth"]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=8.0",
     "ruff>=0.6",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.25",
+    "scipy>=1.11",
 ]
 
 [tool.ruff]
@@ -40,6 +41,9 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["edusynth"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -4,7 +4,6 @@ from pathlib import Path
 
 from edusynth.synthesize import _build_metadata, _load_schema
 
-
 FIXTURE_SCHEMA = Path(__file__).parent.parent / "fixtures" / "mini_schema.yaml"
 
 

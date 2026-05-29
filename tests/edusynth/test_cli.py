@@ -1,6 +1,7 @@
 """Tests voor CLI argument parsing en exitcodes."""
 
 import pytest
+
 from edusynth.cli import _parse_args
 
 

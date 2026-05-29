@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import numpy as np
 import pandas as pd
 from scipy.stats import wasserstein_distance
 
@@ -20,7 +19,11 @@ class Report:
         return all(r.get("ok", True) for r in self.rows)
 
     def to_dataframe(self) -> pd.DataFrame:
-        return pd.DataFrame(self.rows).sort_values("distance", ascending=False).reset_index(drop=True)
+        return (
+            pd.DataFrame(self.rows)
+            .sort_values("distance", ascending=False)
+            .reset_index(drop=True)
+        )
 
     def print(self) -> None:
         from rich.console import Console
@@ -55,10 +58,16 @@ def evaluate(real: pd.DataFrame, synth: pd.DataFrame) -> Report:
 
         if pd.api.types.is_numeric_dtype(real[col]):
             dist = float(wasserstein_distance(r.to_numpy(float), s.to_numpy(float)))
-            rows.append({"column": col, "dtype": "numeric", "distance": round(dist, 4), "metric": "wasserstein"})
+            rows.append({
+                "column": col, "dtype": "numeric",
+                "distance": round(dist, 4), "metric": "wasserstein",
+            })
         else:
             dist = _tv_distance(r, s)
-            rows.append({"column": col, "dtype": "categorical", "distance": round(dist, 4), "metric": "tv", "ok": dist < 0.2})
+            rows.append({
+                "column": col, "dtype": "categorical",
+                "distance": round(dist, 4), "metric": "tv", "ok": dist < 0.2,
+            })
 
     return Report(rows=rows)
 
@@ -67,4 +76,8 @@ def _tv_distance(real: pd.Series, synth: pd.Series) -> float:
     real_p = real.value_counts(normalize=True)
     synth_p = synth.value_counts(normalize=True)
     cats = real_p.index.union(synth_p.index)
-    return float(0.5 * (real_p.reindex(cats, fill_value=0.0) - synth_p.reindex(cats, fill_value=0.0)).abs().sum())
+    return float(
+        0.5 * (
+            real_p.reindex(cats, fill_value=0.0) - synth_p.reindex(cats, fill_value=0.0)
+        ).abs().sum()
+    )
