@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# uv
+uv.lock
+
+# Data — nooit echte of grote datasets committen
+data/*
+!data/.gitkeep
+
+# MkDocs
+site/
+
+# OS
+.DS_Store

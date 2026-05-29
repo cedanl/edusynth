@@ -1,0 +1,33 @@
+name: mini_inschrijving
+description: Minimaal fixture-schema voor unit tests — geen echte data.
+
+columns:
+  pgn:
+    dtype: string
+    role: primary_key
+    description: "Fictief persoonsgebonden nummer"
+
+  inschrijvingsjaar:
+    dtype: integer
+    min: 2015
+    max: 2023
+
+  instellingscode:
+    dtype: categorical
+    categories: ["21PB", "21RI", "21PE"]
+    probabilities: [0.4, 0.35, 0.25]
+
+  opleidingscode:
+    dtype: categorical
+    categories: ["34401", "34397", "56433"]
+    probabilities: [0.5, 0.3, 0.2]
+
+  geslacht:
+    dtype: categorical
+    categories: ["1", "2"]
+    probabilities: [0.48, 0.52]
+
+  soort_hoger_onderwijs:
+    dtype: categorical
+    categories: ["hbo", "wo"]
+    probabilities: [0.57, 0.43]

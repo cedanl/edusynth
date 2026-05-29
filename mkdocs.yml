@@ -1,0 +1,37 @@
+site_name: edusynth
+site_description: Synthetische data genereren voor Nederlandse onderwijsdatasets
+site_url: https://cedanl.github.io/edusynth
+repo_url: https://github.com/cedanl/edusynth
+repo_name: cedanl/edusynth
+
+theme:
+  name: material
+  language: nl
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+
+nav:
+  - Home: index.md
+  - Aan de slag: aan-de-slag.md
+  - Configuratie: configuratie.md
+  - Validatie: validatie.md
+  - Methodologie:
+      - Overzicht: methodologie/index.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
