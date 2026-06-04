@@ -3,53 +3,52 @@
 ## Installatie
 
 ```bash
-pip install edusynth
+pip install ceda-synth
 ```
 
-## Stap 1 — Schema voorbereiden
+Of lokaal vanuit de broncode:
 
-Een schema beschrijft de kolommen van je dataset. Maak een YAML-bestand:
-
-```yaml
-name: mijn_dataset
-columns:
-  student_id:
-    dtype: string
-    role: primary_key
-  inschrijvingsjaar:
-    dtype: integer
-    min: 2015
-    max: 2024
-  geslacht:
-    dtype: categorical
-    categories: ["1", "2"]
-    probabilities: [0.48, 0.52]
+```bash
+git clone https://github.com/cedanl/ceda-synth
+cd ceda-synth
+uv sync
+uv run ceda-synth app
 ```
 
-## Stap 2 — Model trainen
+## De app gebruiken
 
-```python
-import pandas as pd
-from edusynth import fit
+### Stap 1 — Data uploaden
 
-real = pd.read_csv("data.csv")
-model = fit(real, schema_path="schema.yaml")
-```
+Start de app en sleep een CSV- of Parquet-bestand op het uploadveld. ceda-synth toont een preview van de eerste rijen en detecteert automatisch kolomtypes.
 
-## Stap 3 — Data genereren
+!!! tip "Geschikte data"
+    De app werkt het best met tabellen van minimaal 500 rijen. Kleinere datasets leveren minder stabiele correlatieramingen op.
 
-```python
-from edusynth import sample
+### Stap 2 — Kolommen controleren
 
-synth = sample(model, n_rows=1000)
-synth.to_csv("synthetisch.csv", index=False)
-```
+Na het uploaden zie je per kolom het gedetecteerde SDV-type (`categorical`, `numerical`, `datetime`, `id`). Pas dit aan als de detectie afwijkt.
 
-## Stap 4 — Valideren
+### Stap 3 — Synthetische data genereren
 
-```python
-from edusynth import evaluate
+Kies het aantal gewenste rijen en klik **Genereer**. Het model traint op de achtergrond — bij grotere datasets kan dit enkele seconden duren.
 
-report = evaluate(real, synth)
-report.print()
+### Stap 4 — Validatierapport bekijken
+
+De app toont per kolom:
+
+- **TV-afstand** (categorisch) — hoe goed kloppen de verhoudingen? Onder `0.2` is groen.
+- **Wasserstein-afstand** (numeriek) — hoe dicht liggen de verdelingen bij elkaar?
+- Distributieplots echte vs. synthetische data
+
+### Stap 5 — Exporteren
+
+Download de synthetische data als CSV. De app toont ook het bijbehorende SDV-codeblok om hetzelfde resultaat zelf te reproduceren.
+
+## CLI (geavanceerd)
+
+Voor batchverwerking is er ook een CLI:
+
+```bash
+ceda-synth synthesize data.csv output.csv --rows 1000
+ceda-synth validate data.csv output.csv
 ```

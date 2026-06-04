@@ -1,14 +1,16 @@
-# edusynth
+# ceda-synth
 
-Privacyveilige synthetische data genereren voor Nederlandse onderwijsdatasets.
+Applicatielaag bovenop [SDV](https://github.com/sdv-dev/SDV) voor het genereren van privacyveilige synthetische versies van Nederlandse onderwijsdatasets.
+
+Doelgroep: data-analisten en onderzoekers bij Nederlandse hogeronderwijsinstellingen die synthetische data willen genereren zonder zelf SDV te hoeven configureren.
 
 ```bash
-pip install edusynth
+pip install ceda-synth
 ```
 
 ```bash
-edusynth synthesize data.csv schema.yaml output.csv --rows 1000
-edusynth validate data.csv output.csv
+ceda-synth synthesize data.csv schema.yaml output.csv --rows 1000
+ceda-synth validate data.csv output.csv
 ```
 
-Documentatie: [cedanl.github.io/edusynth](https://cedanl.github.io/edusynth)
+Documentatie: [cedanl.github.io/ceda-synth](https://cedanl.github.io/ceda-synth)

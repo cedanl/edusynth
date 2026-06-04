@@ -1,50 +1,74 @@
-# Claude Configuration — edusynth
+# Claude Configuration — ceda-synth
 
 ## Project Overview
 
-edusynth is een open-source CEDA/Npuls tool voor het genereren van privacyveilige synthetische versies van Nederlandse onderwijsdatasets. Het gebruikt SDV (Synthetic Data Vault) als statistische engine en biedt zowel een Python API als een CLI.
+ceda-synth is een open-source CEDA/Npuls Streamlit-applicatie die [SDV (Synthetic Data Vault)](https://github.com/sdv-dev/SDV) toegankelijk maakt voor data-analisten bij Nederlandse hogeronderwijsinstellingen. Gebruikers uploaden een dataset, genereren een synthetische versie en bekijken statistische validatierapporten — zonder SDV zelf te hoeven configureren.
+
+**Kernfunctionaliteit:**
+- Databestand uploaden (CSV/Parquet) via de Streamlit-app
+- Kolomtypes automatisch detecteren, handmatig bijstellen
+- Synthetische data genereren via SDV GaussianCopulaSynthesizer
+- Statistische validatie tonen (TV-afstand, Wasserstein) met distributieplots
+- SDV-codeblok genereren zodat men het zelf kan reproduceren
+- CLI voor batchverwerking (`synthesize`, `validate`)
 
 **Doelgroep:** data-analisten en onderzoekers bij Nederlandse hogeronderwijsinstellingen.
 
 ## Tech Stack
 
 - **Python 3.12.7** met **uv** voor dependency management
-- **SDV** als synthesizer engine (GaussianCopulaSynthesizer, later PAR/HMA)
+- **Streamlit ≥1.35** als app-framework (primaire interface)
+- **SDV** als synthesizer engine (GaussianCopulaSynthesizer)
 - **sdmetrics** voor validatiemetrieken
 - **pandas / scipy** voor dataverwerking en statistiek
+- **Plotly** voor distributieplots in de app
 - **Rich** voor CLI-output
 - **MkDocs + Material** voor documentatie
 
 ## Architectuurprincipes
 
-### API-first, CLI is een dun laagje
-Alle logica leeft in `synthesize.py` en `validate.py`. `cli.py` parseert argumenten en delegeert — nooit zelf logica toevoegen aan `cli.py`.
+### App is de primaire interface, CLI is een dun laagje
+De app (`app.py`) is het hoofdproduct. `cli.py` biedt `ceda-synth app` (lanceert Streamlit) en batchcommando's (`synthesize`, `validate`). Logica leeft in `synthesize.py` en `validate.py` — nooit in `cli.py` of `app.py`.
 
-### Schema is de enige bron van waarheid
-Geen hardcoded kolomnamen, kansen, of drempelwaarden in Python-code. Alles wat datasetspecifiek is, staat in een YAML-schema onder `schemas/` (productie) of `tests/fixtures/` (tests).
+### Schema is optioneel
+SDV detecteert kolomtypes automatisch via `detect_from_dataframe`. Een YAML-schema is alleen nodig voor batchverwerking via de CLI wanneer auto-detectie niet volstaat.
 
 ### Strikte dependency-richting
 ```
-schema (YAML) → synthesize.py → cli.py
-schema (YAML) → validate.py  → cli.py
+synthesize.py ← app.py
+validate.py   ← app.py
+synthesize.py ← cli.py
+validate.py   ← cli.py
 ```
-Nooit omhoog importeren. `synthesize.py` weet niets van `cli.py`.
+Nooit omhoog importeren. `synthesize.py` en `validate.py` weten niets van `app.py` of `cli.py`.
+
+### Progressive disclosure — drie niveaus
+Elke nieuwe UI-feature krijgt een niveau toegewezen. Niveau bepaalt de standaard zichtbaarheid:
+
+| Niveau | Standaard | Voorbeelden |
+|---|---|---|
+| **1 — Altijd zichtbaar** | Direct op het scherm | Upload, aanbevolen config, scorecard-oordeel in gewone taal |
+| **2 — Één klik** | Ingeklapte expander | Kolomtype-overrides, synthesizer-keuze, scoredetails |
+| **3 — Twee kliks** | Geneste expander / aparte tab | YAML-parameters, Python-code, synthesizer-log |
+
+**Regel:** voeg geen nieuwe feature toe aan niveau 1 tenzij de casual gebruiker hem bij elk gebruik nodig heeft. Twijfel je? Zet het op niveau 2. Power users vinden het; beginners worden niet overweldigd.
 
 ### Geen abstractie zonder tweede use case
-Geen registries, factories of ABCs totdat er daadwerkelijk een tweede synthesizer-type is. Drie vergelijkbare implementaties vóór een abstractie.
+Geen registries, factories of ABCs totdat er een tweede synthesizer-type is.
 
 ## Project Structure
 
 ```
-src/edusynth/
+src/ceda_synth/
 ├── __init__.py       # publieke API: fit, sample, evaluate
-├── cli.py            # dun — alleen argparse + delegeren
+├── app.py            # Streamlit-app — primaire interface
+├── cli.py            # dun — app-launcher + batchcommando's
 ├── synthesize.py     # fit() en sample()
 └── validate.py       # evaluate() → Report
 
 tests/
 ├── fixtures/         # kleine hand-crafted CSV/YAML, WEL in git
-└── edusynth/         # spiegelt src/edusynth/ exact
+└── ceda_synth/       # spiegelt src/ceda_synth/ exact
     ├── test_cli.py
     ├── test_synthesize.py
     └── test_validate.py
@@ -60,8 +84,12 @@ scripts/              # hulpscripts (download_datasets.py)
 # Installeren
 uv sync --all-extras
 
-# Draaien
-uv run edusynth --help
+# App starten
+uv run ceda-synth app
+
+# CLI (batch)
+uv run ceda-synth synthesize data.csv output.csv --rows 1000
+uv run ceda-synth validate data.csv output.csv
 
 # Tests
 uv run pytest
@@ -81,21 +109,23 @@ uv run mkdocs serve
 
 | Niveau | Bestand | Wat het bewaakt |
 |---|---|---|
-| Unit | `test_cli.py` | Argument-parsing, exitcodes |
-| Unit | `test_synthesize.py` | Schema laden, metadata opbouwen |
+| Unit | `test_cli.py` | Argument-parsing, exitcodes, app-command |
+| Unit | `test_synthesize.py` | Schema laden, metadata opbouwen, optionele schema_path |
 | Unit | `test_validate.py` | Report, afstandsmetrieken |
 
-Tests draaien zonder echte data — alleen `tests/fixtures/` wordt gebruikt. CI draait `pytest` + `ruff` bij elke push en PR naar `main`.
+Tests draaien zonder echte data en zonder Streamlit te starten — alleen `tests/fixtures/` wordt gebruikt. CI draait `pytest` + `ruff` bij elke push en PR naar `main`.
 
 ### Wanneer schrijf je een test?
 - Nieuwe CLI-vlag → test in `test_cli.py`
 - Nieuwe publieke functie in API → test in bijbehorend testbestand
 - Nieuwe validatiemetriek → test in `test_validate.py`
+- Streamlit-UI-logica → test de onderliggende functie, niet Streamlit zelf
 
 ## Documentatieregel (verplicht bij elke PR)
 
 | Als je dit wijzigt… | …update dan |
 |---|---|
+| App-flow / `app.py` | `docs/aan-de-slag.md` |
 | CLI-vlaggen / `cli.py` | `docs/aan-de-slag.md` |
 | Schema-velden / `synthesize.py` | `docs/configuratie.md` |
 | Validatiemetrieken / `validate.py` | `docs/validatie.md` |

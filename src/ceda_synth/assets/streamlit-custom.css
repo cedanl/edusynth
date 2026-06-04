@@ -1,0 +1,116 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+:root {
+  --npuls-oranje: #DD784B;
+  --npuls-zwart: #000000;
+  --npuls-roze: #F4D9DC;
+  --npuls-blauw: #3D68EC;
+  --npuls-geel: #F4D74B;
+  --npuls-groen: #00AF81;
+}
+
+html, body, [class*="css"] {
+  font-family: 'Inter', 'General Sans', Arial, Helvetica, sans-serif;
+}
+
+h1, h2, h3, h4 {
+  font-weight: 700;
+  color: var(--npuls-zwart);
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+  background-color: #F9FAFB;
+  border-right: 1px solid #E5E7EB;
+}
+
+/* Buttons */
+.stButton > button {
+  background-color: var(--npuls-blauw);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  padding: 8px 20px;
+  transition: background-color 0.2s;
+}
+.stButton > button:hover {
+  background-color: #2d52c7;
+  color: white;
+}
+
+/* Metrics */
+[data-testid="stMetric"] {
+  background-color: #F9FAFB;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #E5E7EB;
+}
+[data-testid="stMetricValue"] {
+  color: var(--npuls-blauw);
+  font-weight: 700;
+}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+  gap: 8px;
+  border-bottom: 2px solid #E5E7EB;
+}
+.stTabs [data-baseweb="tab"] {
+  border-radius: 8px 8px 0 0;
+  font-weight: 600;
+  padding: 8px 16px;
+}
+.stTabs [aria-selected="true"] {
+  background-color: var(--npuls-blauw);
+  color: white;
+}
+
+/* Expanders */
+[data-testid="stExpander"] {
+  border-radius: 12px;
+  border: 1px solid #E5E7EB;
+}
+
+/* Inputs */
+.stSelectbox > div > div,
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input {
+  border-radius: 8px;
+  border-color: #D1D5DB;
+}
+.stSelectbox > div > div:focus-within,
+.stTextInput > div > div > input:focus,
+.stNumberInput > div > div > input:focus {
+  border-color: var(--npuls-blauw);
+  box-shadow: 0 0 0 2px rgba(61, 104, 236, 0.15);
+}
+
+/* Table headers */
+.dataframe th {
+  background-color: var(--npuls-blauw) !important;
+  color: white !important;
+  font-weight: 600;
+}
+.dataframe td {
+  border-bottom: 1px solid #E5E7EB;
+}
+
+/* Alerts */
+.stSuccess { background-color: rgba(0,175,129,0.1); border-left-color: var(--npuls-groen); }
+.stError   { background-color: rgba(221,120,75,0.1); border-left-color: var(--npuls-oranje); }
+.stInfo    { background-color: rgba(61,104,236,0.1); border-left-color: var(--npuls-blauw); }
+.stWarning { background-color: rgba(244,215,75,0.15); border-left-color: var(--npuls-geel); }
+
+/* Download button */
+[data-testid="stDownloadButton"] > button {
+  background-color: var(--npuls-groen);
+  color: white;
+  border-radius: 8px;
+  font-weight: 600;
+  border: none;
+}
+[data-testid="stDownloadButton"] > button:hover {
+  background-color: #009970;
+  color: white;
+}

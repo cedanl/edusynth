@@ -1,34 +1,41 @@
-# edusynth
+# ceda-synth
 
-**edusynth** genereert privacyveilige synthetische versies van Nederlandse onderwijsdatasets.
+**ceda-synth** is een Streamlit-applicatie die [SDV (Synthetic Data Vault)](https://github.com/sdv-dev/SDV) toegankelijk maakt voor data-analisten bij Nederlandse hogeronderwijsinstellingen.
+
+Upload je dataset, genereer een synthetische versie en bekijk direct of de statistische structuur klopt — zonder SDV zelf te hoeven configureren.
 
 ## Wat doet het?
 
-Geef het je echte data en een schema — het leert de statistische structuur en genereert nieuwe rijen die er op lijken zonder echte persoonsgegevens te bevatten.
+1. **Uploaden** — sleep een CSV of Parquet-bestand in de app
+2. **Genereren** — ceda-synth traint een SDV Gaussian Copula model op jouw data en genereert een synthetische versie
+3. **Valideren** — de app toont per kolom hoe dicht de synthetische distributies bij de echte liggen
+4. **Reproduceren** — wil je hetzelfde in je eigen Python-omgeving doen? De app genereert een SDV-codeblok dat je direct kunt kopiëren
 
-## Installatie
+## Starten
 
 ```bash
-pip install edusynth
+pip install ceda-synth
+ceda-synth app
 ```
 
-## Quickstart
+De browser opent automatisch op `http://localhost:8501`.
+
+## Zelf doen met SDV
+
+ceda-synth is een dunne laag. Alles wat de app doet, kun je ook direct met SDV:
 
 ```python
+from sdv.metadata import SingleTableMetadata
+from sdv.single_table import GaussianCopulaSynthesizer
 import pandas as pd
-from edusynth import fit, sample, evaluate
 
 real = pd.read_csv("inschrijvingen.csv")
-model = fit(real, schema_path="schemas/1cijferho.yaml")
-synth = sample(model, n_rows=1000)
+metadata = SingleTableMetadata()
+metadata.detect_from_dataframe(real)
 
-report = evaluate(real, synth)
-report.print()
+synthesizer = GaussianCopulaSynthesizer(metadata)
+synthesizer.fit(real)
+synth = synthesizer.sample(num_rows=1000)
 ```
 
-Of via de CLI:
-
-```bash
-edusynth synthesize inschrijvingen.csv schemas/1cijferho.yaml output.csv --rows 1000
-edusynth validate inschrijvingen.csv output.csv
-```
+Zie de [SDV-documentatie](https://docs.sdv.dev) voor geavanceerde opties.

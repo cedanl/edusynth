@@ -1,35 +1,47 @@
 # Configuratie
 
-Alle dataset-specifieke configuratie staat in een schema YAML-bestand. Er is geen configuratie hardcoded in de package.
+## Kolomtypes in de app
 
-## Schema-structuur
+ceda-synth detecteert kolomtypes automatisch via SDV's `detect_from_dataframe`. In de UI kun je dit per kolom overschrijven:
+
+| App-label | SDV-type | Gebruik voor |
+|---|---|---|
+| Categorisch | `categorical` | Codes, geslacht, opleiding |
+| Numeriek (geheel) | `numerical` | Jaren, aantallen |
+| Numeriek (decimaal) | `numerical` | Cijfers, ratio's |
+| Datum | `datetime` | Datumkolommen |
+| ID / vrije tekst | `id` | Sleutels, studentnummers |
+
+## Primaire sleutel
+
+Markeer een kolom als primaire sleutel als die unieke rij-identifiers bevat. SDV genereert dan nieuwe unieke waarden in plaats van bestaande te kopiëren.
+
+## Geavanceerd: YAML-schema
+
+Voor batchverwerking via de CLI kun je een schema-bestand meegeven:
 
 ```yaml
 name: naam_van_dataset
-description: Optionele beschrijving.
 
 columns:
-  kolomnaam:
-    dtype: string | integer | float | categorical | date
-    role: primary_key | null          # optioneel
-    min: 0                            # voor integer/float
-    max: 100                          # voor integer/float
-    categories: ["a", "b", "c"]      # voor categorical
-    probabilities: [0.5, 0.3, 0.2]   # voor categorical
-    nullable: false
-    description: "Optionele toelichting"
+  student_id:
+    dtype: string
+    role: primary_key
+  inschrijvingsjaar:
+    dtype: integer
+    min: 2015
+    max: 2024
+  geslacht:
+    dtype: categorical
+    categories: ["1", "2"]
 ```
 
-## Dtypes
+```bash
+ceda-synth synthesize data.csv output.csv --schema schema.yaml --rows 1000
+```
 
-| dtype | SDV-type | Gebruik voor |
-|---|---|---|
-| `categorical` | categorical | Codes, geslacht, regio |
-| `integer` | numerical | Jaren, aantallen |
-| `float` | numerical | Cijfers, ratio's |
-| `string` | id | Vrije tekst, IDs |
-| `date` | datetime | Datumkolommen |
+Zonder `--schema` detecteert de CLI kolomtypes automatisch, net als de app.
 
 ## Bekende schema's
 
-Voorgeconfigureerde schema's voor CEDA-datasets staan in `schemas/` zodra ze beschikbaar zijn.
+Voorgeconfigureerde schema's voor CEDA-datasets (1CHO, CROHO) staan in `schemas/` zodra ze beschikbaar zijn.
