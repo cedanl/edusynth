@@ -17,6 +17,7 @@ class TabularConfig:
     primary_key: str | None
     n_rows: int
     synthesizer: str = "gaussian"
+    epochs: int = 100
 
 
 @dataclass
@@ -91,13 +92,14 @@ def render_tabular(
     recommended = "ctgan" if (large or complex_r) else "gaussian"
     rec_name = "CTGAN" if recommended == "ctgan" else "Gaussian Copula"
     rec_reason = (
-        "beter voor grote datasets en complexe verbanden — traint langer (±2 min)"
+        "beter voor grote datasets en complexe verbanden — traint langer"
         if recommended == "ctgan"
         else "snel en stabiel voor de meeste tabellaire onderwijsdata"
     )
     st.info(f"Aanbevolen: **{rec_name}** — {rec_reason}")
 
     synthesizer = recommended
+    epochs = 100
     with st.expander("Geavanceerd: overschrijf synthesizer-keuze", expanded=False):
         override = st.radio(
             "Kies synthesizer:",
@@ -107,6 +109,10 @@ def render_tabular(
             horizontal=True,
         )
         synthesizer = "gaussian" if override == "Gaussian Copula" else "ctgan"
+        if synthesizer == "ctgan":
+            epochs = int(
+                st.slider("Epochs (trainingsrondes)", min_value=10, max_value=300, value=100)
+            )
 
     n_rows = int(
         st.number_input("Aantal rijen", min_value=10, max_value=500_000, value=len(df), step=100)
@@ -116,6 +122,7 @@ def render_tabular(
         primary_key=primary_key,
         n_rows=n_rows,
         synthesizer=synthesizer,
+        epochs=epochs,
     )
 
 

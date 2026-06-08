@@ -6,12 +6,14 @@ import streamlit as st
 from sdv.metadata import SingleTableMetadata
 from sdv.single_table import GaussianCopulaSynthesizer
 
+from ceda_synth.core.synthesize import safe_batch_size
 from ceda_synth.ui import config as cfg_ui
 from ceda_synth.ui import datasource, results
 from ceda_synth.ui.theme import inject_css
 
-
 # ── Generate helpers ───────────────────────────────────────────────────────────
+
+
 def _run_sequential(src: datasource.DataSource, cfg: cfg_ui.SequentialConfig) -> None:
     from sdv.sequential import PARSynthesizer
 
@@ -46,11 +48,11 @@ def _run_tabular(src: datasource.DataSource, cfg: cfg_ui.TabularConfig) -> None:
     )
     with st.spinner(label):
         try:
-            model = (
-                CTGANSynthesizer(meta, epochs=100)
-                if cfg.synthesizer == "ctgan"
-                else GaussianCopulaSynthesizer(meta)
-            )
+            if cfg.synthesizer == "ctgan":
+                batch_size = safe_batch_size(len(src.df))
+                model = CTGANSynthesizer(meta, epochs=cfg.epochs, batch_size=batch_size)
+            else:
+                model = GaussianCopulaSynthesizer(meta)
             model.fit(src.df)
             st.session_state["synth"] = model.sample(num_rows=cfg.n_rows)
             st.session_state["n_label"] = f"{cfg.n_rows:,} rijen"

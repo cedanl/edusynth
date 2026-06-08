@@ -132,6 +132,11 @@ def _looks_like_date(values: list) -> bool:
     return matches >= len(sample) * 0.7
 
 
+def safe_batch_size(n_rows: int) -> int:
+    """Bereken een veilige CTGAN batch_size die niet groter is dan de dataset."""
+    return min(500, max(50, n_rows // 10))
+
+
 # ── Synthese ───────────────────────────────────────────────────────────────────
 
 
