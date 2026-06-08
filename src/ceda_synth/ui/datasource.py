@@ -11,13 +11,11 @@ import streamlit as st
 _TYPE_OPTIONS: dict[str, str] = {
     "Tabular": "single_table",
     "Sequentieel": "sequential",
-    "Relationeel": "multi_table",
 }
 
 _MODALITY_LABEL: dict[str | None, str] = {
     "single_table": "Tabular",
     "sequential": "Sequentieel",
-    "multi_table": "Relationeel",
     None: "Tabular",
 }
 
@@ -102,11 +100,6 @@ def render() -> DataSource:
     modality = _TYPE_OPTIONS[selected_type]
 
     with c2:
-        if modality == "multi_table":
-            st.selectbox("**Dataset**", _list_demos(modality), disabled=True)
-            st.info("**Relationeel** wordt nog niet ondersteund — komt eraan.")
-            st.stop()
-
         demo_name = st.selectbox("**Dataset**", _list_demos(modality))
 
     df, demo_meta = _load_demo(demo_name, modality)
