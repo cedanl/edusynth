@@ -54,18 +54,10 @@ def render_tabular(
 
     # ── Synthesizer-keuze (guided) ──────────────────────────────────────────
     st.markdown("**Synthesizer**")
-    c1, c2, c3 = st.columns(3)
-    large = (
-        c1.radio(
-            "Dataset groter dan 50.000 rijen?",
-            ["Nee", "Ja"],
-            horizontal=True,
-            key="q_large",
-        )
-        == "Ja"
-    )
+    large = len(df) > 50_000
+    c1, c2 = st.columns(2)
     complex_r = (
-        c2.radio(
+        c1.radio(
             "Complexe, niet-lineaire verbanden?",
             ["Nee — meeste onderwijsdata", "Ja — specifieke domeinkeuze"],
             horizontal=True,
@@ -74,7 +66,7 @@ def render_tabular(
         != "Nee — meeste onderwijsdata"
     )
     longitudinal = (
-        c3.radio(
+        c2.radio(
             "Heeft elke entiteit (student/instelling) meerdere rijen over de tijd?",
             ["Nee", "Ja — longitudinale data"],
             horizontal=True,
