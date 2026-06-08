@@ -8,6 +8,13 @@ Doelgroep: data-analisten en onderzoekers bij Nederlandse hogeronderwijsinstelli
 pip install ceda-synth
 ```
 
+Of lokaal:
+
+```bash
+uv sync
+uv run ceda-synth app
+```
+
 ```bash
 ceda-synth synthesize data.csv schema.yaml output.csv --rows 1000
 ceda-synth validate data.csv output.csv
