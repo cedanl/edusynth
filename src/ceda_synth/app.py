@@ -6,7 +6,7 @@ import streamlit as st
 from sdv.metadata import SingleTableMetadata
 from sdv.single_table import GaussianCopulaSynthesizer
 
-from ceda_synth.core.synthesize import safe_batch_size
+from ceda_synth.core.synthesize import auto_epochs, safe_batch_size
 from ceda_synth.ui import config as cfg_ui
 from ceda_synth.ui import datasource, results
 from ceda_synth.ui.theme import inject_css
@@ -50,7 +50,8 @@ def _run_tabular(src: datasource.DataSource, cfg: cfg_ui.TabularConfig) -> None:
         try:
             if cfg.synthesizer == "ctgan":
                 batch_size = safe_batch_size(len(src.df))
-                model = CTGANSynthesizer(meta, epochs=cfg.epochs, batch_size=batch_size)
+                epochs = auto_epochs(len(src.df))
+                model = CTGANSynthesizer(meta, epochs=epochs, batch_size=batch_size)
             else:
                 model = GaussianCopulaSynthesizer(meta)
             model.fit(src.df)
@@ -62,7 +63,14 @@ def _run_tabular(src: datasource.DataSource, cfg: cfg_ui.TabularConfig) -> None:
             st.session_state["synthesizer"] = cfg.synthesizer
             st.session_state["metadata_dict"] = meta.to_dict()
         except Exception as exc:
-            st.error(f"Fout bij genereren: {exc}")
+            msg = str(exc).lower()
+            if "buffer size" in msg or "memory" in msg or "oom" in msg:
+                st.error(
+                    "De dataset is te complex voor CTGAN. "
+                    "Probeer Gaussian Copula — die werkt beter met veel categorische kolommen."
+                )
+            else:
+                st.error(f"Fout bij genereren: {exc}")
             st.stop()
 
 

@@ -8,6 +8,8 @@ import pandas as pd
 import streamlit as st
 from sdv.metadata import SingleTableMetadata
 
+from ceda_synth.core.synthesize import ctgan_is_feasible, estimate_ctgan_width
+
 _SDTYPES = ["categorical", "numerical", "datetime", "id"]
 
 
@@ -17,7 +19,6 @@ class TabularConfig:
     primary_key: str | None
     n_rows: int
     synthesizer: str = "gaussian"
-    epochs: int = 100
 
 
 @dataclass
@@ -89,7 +90,24 @@ def render_tabular(
             "gebruik 'SDV demo-data → Sequentieel' of PAR Synthesizer in SDV direct."
         )
 
-    recommended = "ctgan" if (large or complex_r) else "gaussian"
+    # ── Pre-flight check: is CTGAN haalbaar? ─────────────────────────────────
+    encoded_width = estimate_ctgan_width(df, col_types)
+    feasible, infeasible_reason = ctgan_is_feasible(len(df), encoded_width)
+
+    recommended = "ctgan" if (large or complex_r) and feasible else "gaussian"
+
+    if not feasible and (large or complex_r):
+        top_cols = sorted(
+            ((c, df[c].nunique()) for c, t in col_types.items() if t == "categorical"),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:3]
+        col_list = ", ".join(f"**{c}** ({n} waarden)" for c, n in top_cols)
+        st.warning(
+            f"Deze dataset heeft te veel categorische variaties voor CTGAN "
+            f"(o.a. {col_list}). Gaussian Copula is aanbevolen."
+        )
+
     rec_name = "CTGAN" if recommended == "ctgan" else "Gaussian Copula"
     rec_reason = (
         "beter voor grote datasets en complexe verbanden — traint langer"
@@ -99,7 +117,6 @@ def render_tabular(
     st.info(f"Aanbevolen: **{rec_name}** — {rec_reason}")
 
     synthesizer = recommended
-    epochs = 100
     with st.expander("Geavanceerd: overschrijf synthesizer-keuze", expanded=False):
         override = st.radio(
             "Kies synthesizer:",
@@ -109,9 +126,10 @@ def render_tabular(
             horizontal=True,
         )
         synthesizer = "gaussian" if override == "Gaussian Copula" else "ctgan"
-        if synthesizer == "ctgan":
-            epochs = int(
-                st.slider("Epochs (trainingsrondes)", min_value=10, max_value=300, value=100)
+        if synthesizer == "ctgan" and not feasible:
+            st.warning(
+                "CTGAN is waarschijnlijk te zwaar voor deze dataset. "
+                "De kans op een geheugenfout is groot."
             )
 
     n_rows = int(
@@ -122,7 +140,6 @@ def render_tabular(
         primary_key=primary_key,
         n_rows=n_rows,
         synthesizer=synthesizer,
-        epochs=epochs,
     )
 
 
