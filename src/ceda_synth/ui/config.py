@@ -8,6 +8,8 @@ import pandas as pd
 import streamlit as st
 from sdv.metadata import SingleTableMetadata
 
+from ceda_synth.core.synthesize import ctgan_is_feasible, estimate_ctgan_width
+
 _SDTYPES = ["categorical", "numerical", "datetime", "id"]
 
 
@@ -52,18 +54,10 @@ def render_tabular(
 
     # ── Synthesizer-keuze (guided) ──────────────────────────────────────────
     st.markdown("**Synthesizer**")
-    c1, c2, c3 = st.columns(3)
-    large = (
-        c1.radio(
-            "Dataset groter dan 50.000 rijen?",
-            ["Nee", "Ja"],
-            horizontal=True,
-            key="q_large",
-        )
-        == "Ja"
-    )
+    large = len(df) > 50_000
+    c1, c2 = st.columns(2)
     complex_r = (
-        c2.radio(
+        c1.radio(
             "Complexe, niet-lineaire verbanden?",
             ["Nee — meeste onderwijsdata", "Ja — specifieke domeinkeuze"],
             horizontal=True,
@@ -72,7 +66,7 @@ def render_tabular(
         != "Nee — meeste onderwijsdata"
     )
     longitudinal = (
-        c3.radio(
+        c2.radio(
             "Heeft elke entiteit (student/instelling) meerdere rijen over de tijd?",
             ["Nee", "Ja — longitudinale data"],
             horizontal=True,
@@ -88,10 +82,27 @@ def render_tabular(
             "gebruik 'SDV demo-data → Sequentieel' of PAR Synthesizer in SDV direct."
         )
 
-    recommended = "ctgan" if (large or complex_r) else "gaussian"
+    # ── Pre-flight check: is CTGAN haalbaar? ─────────────────────────────────
+    encoded_width = estimate_ctgan_width(df, col_types)
+    feasible, infeasible_reason = ctgan_is_feasible(len(df), encoded_width)
+
+    recommended = "ctgan" if (large or complex_r) and feasible else "gaussian"
+
+    if not feasible and (large or complex_r):
+        top_cols = sorted(
+            ((c, df[c].nunique()) for c, t in col_types.items() if t == "categorical"),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:3]
+        col_list = ", ".join(f"**{c}** ({n} waarden)" for c, n in top_cols)
+        st.warning(
+            f"Deze dataset heeft te veel categorische variaties voor CTGAN "
+            f"(o.a. {col_list}). Gaussian Copula is aanbevolen."
+        )
+
     rec_name = "CTGAN" if recommended == "ctgan" else "Gaussian Copula"
     rec_reason = (
-        "beter voor grote datasets en complexe verbanden — traint langer (±2 min)"
+        "beter voor grote datasets en complexe verbanden — traint langer"
         if recommended == "ctgan"
         else "snel en stabiel voor de meeste tabellaire onderwijsdata"
     )
@@ -107,6 +118,11 @@ def render_tabular(
             horizontal=True,
         )
         synthesizer = "gaussian" if override == "Gaussian Copula" else "ctgan"
+        if synthesizer == "ctgan" and not feasible:
+            st.warning(
+                "CTGAN is waarschijnlijk te zwaar voor deze dataset. "
+                "De kans op een geheugenfout is groot."
+            )
 
     n_rows = int(
         st.number_input("Aantal rijen", min_value=10, max_value=500_000, value=len(df), step=100)
