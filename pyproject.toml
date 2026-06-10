@@ -38,6 +38,15 @@ dev = [
     "mkdocstrings[python]>=0.25",
 ]
 
+[tool.uv]
+# In een devcontainer staan de uv-cache en de .venv vaak op verschillende
+# filesystems, waardoor hardlinken faalt en uv terugvalt op een trage
+# volledige kopie. Tijdens die kopie is de .venv tijdelijk incompleet
+# (bv. scipy.stats ontbreekt), wat een ModuleNotFoundError geeft als je een
+# commando draait voordat de sync klaar is. "copy" maakt dit gedrag expliciet
+# en onderdrukt de hardlink-waarschuwing.
+link-mode = "copy"
+
 [tool.ruff]
 line-length = 100
 
