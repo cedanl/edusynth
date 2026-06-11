@@ -82,11 +82,65 @@ def test_privacy_report_identical_data():
     assert priv.dcr_ratio >= 0.0
 
 
-def test_privacy_report_no_numeric_columns():
+def test_privacy_report_categorical_only_is_available():
+    # Categorische quasi-identifiers tellen nu mee (bug #11).
     df = pd.DataFrame({"cat": ["a", "b", "c"] * 10})
     priv = evaluate_privacy(df, df.copy())
+    assert priv.available
+    assert priv.n_categorical_cols == 1
+    assert priv.n_numeric_cols == 0
+
+
+def test_privacy_report_mixed_columns_counts_both():
+    rng = np.random.default_rng(3)
+    df = pd.DataFrame(
+        {
+            "geslacht": rng.choice(["1", "2"], 60),
+            "opleiding": rng.choice(["A", "B", "C"], 60),
+            "leeftijd": rng.integers(17, 30, 60),
+        }
+    )
+    priv = evaluate_privacy(df, df.copy())
+    assert priv.available
+    assert priv.n_numeric_cols == 1
+    assert priv.n_categorical_cols == 2
+    assert priv.n_cols == 3
+
+
+def test_privacy_report_excludes_high_cardinality_column():
+    rng = np.random.default_rng(4)
+    df = pd.DataFrame(
+        {
+            "geslacht": rng.choice(["1", "2"], 60),
+            "naam": [f"student_{i}" for i in range(60)],  # uniek → identifier
+        }
+    )
+    priv = evaluate_privacy(df, df.copy())
+    assert "naam" in priv.excluded_cols
+    assert priv.n_categorical_cols == 1
+
+
+def test_privacy_report_excludes_primary_key():
+    rng = np.random.default_rng(5)
+    df = pd.DataFrame(
+        {
+            "id": range(60),
+            "geslacht": rng.choice(["1", "2"], 60),
+            "leeftijd": rng.integers(17, 30, 60),
+        }
+    )
+    priv = evaluate_privacy(df, df.copy(), primary_key="id")
+    assert priv.available
+    # id mag niet als numerieke kolom meetellen
+    assert priv.n_numeric_cols == 1
+    assert priv.n_categorical_cols == 1
+
+
+def test_privacy_report_no_usable_columns():
+    df = pd.DataFrame({"naam": [f"persoon_{i}" for i in range(30)]})
+    priv = evaluate_privacy(df, df.copy())
     assert not priv.available
-    assert "numerieke" in priv.reason
+    assert "naam" in priv.excluded_cols
 
 
 def test_privacy_report_too_few_rows():

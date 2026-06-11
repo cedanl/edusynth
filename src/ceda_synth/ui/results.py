@@ -112,7 +112,7 @@ def render(
 ) -> None:
     with st.spinner("Validatie en privacyanalyse berekenen…"):
         report = evaluate(df, synth)
-        priv = evaluate_privacy(df, synth)
+        priv = evaluate_privacy(df, synth, primary_key=primary_key)
         pairs = evaluate_pairs(df, synth)
 
     verd_label, verd_risk = _verdeling_verdict(report)
@@ -229,8 +229,16 @@ def _render_validation(
             }
             msg_fn = _RISK_MSG.get(priv.risk_level, st.info)
             msg_fn(_PRIV_TEXT.get(priv.risk_level, ""))
+            if priv.excluded_cols:
+                cols = ", ".join(f"**{c}**" for c in priv.excluded_cols)
+                st.warning(
+                    f"⚠️ Deze kolommen zijn buiten de privacyberekening gehouden "
+                    f"(te veel unieke waarden — vrije tekst of identifier): {cols}. "
+                    "Beoordeel ze handmatig op re-identificatierisico."
+                )
             st.caption(
-                f"Gebaseerd op {priv.n_cols} numerieke kolom(men). "
+                f"Gebaseerd op {priv.n_cols} kolom(men) "
+                f"({priv.n_numeric_cols} numeriek, {priv.n_categorical_cols} categorisch). "
                 "DCR-ratio > 0.9 = laag · 0.7–0.9 = matig · < 0.7 = hoog. "
                 "**Geen formele privacygarantie — "
                 "een DPIA blijft vereist bij publicatie.**"

@@ -115,6 +115,12 @@ def _tv_distance(real: pd.Series, synth: pd.Series) -> float:
 
 _MAX_ROWS = 2_000  # sampling cap voor performance
 
+# Categorische kolommen met meer dan dit aandeel unieke waarden zijn vrije tekst of
+# identifiers (naam, e-mail, vrij ingevulde toelichting) — geen quasi-identifier.
+# We sluiten ze uit van de afstandsberekening (one-hot zou de matrix laten exploderen)
+# en waarschuwen erover in de UI, zodat de gebruiker ze handmatig beoordeelt.
+_MAX_CARDINALITY_RATIO = 0.5
+
 
 @dataclass
 class PrivacyReport:
@@ -131,13 +137,20 @@ class PrivacyReport:
     nndr_median: float = 0.0
     risk_level: str = "onbekend"
     n_cols: int = 0
+    n_numeric_cols: int = 0
+    n_categorical_cols: int = 0
+    excluded_cols: list[str] = field(default_factory=list)
     reason: str = ""
 
     def passed(self) -> bool:
         return self.available and self.risk_level == "laag"
 
 
-def evaluate_privacy(real: pd.DataFrame, synth: pd.DataFrame) -> PrivacyReport:
+def evaluate_privacy(
+    real: pd.DataFrame,
+    synth: pd.DataFrame,
+    primary_key: str | None = None,
+) -> PrivacyReport:
     """Schat het re-identificatierisico via DCR en NNDR.
 
     Methode (holdout-vergelijking uit discussion #3):
@@ -146,26 +159,64 @@ def evaluate_privacy(real: pd.DataFrame, synth: pd.DataFrame) -> PrivacyReport:
     3. DCR(holdout → train): baseline — hoe dicht zitten onbekende echte rijen bij trainingsdata?
     4. Als DCR(synth) ≈ DCR(holdout), gedraagt synthetische data zich als een buitenstaander → goed.
 
+    Zowel numerieke als categorische kolommen tellen mee: categorische velden
+    (geslacht, instellingscode, opleidingscode) zijn juist de quasi-identifiers in
+    onderwijsdata. Numeriek wordt [0, 1]-geschaald, categorisch wordt one-hot
+    gecodeerd (nominaal — categorieën liggen onderling even ver uit elkaar).
+
     Noot: synthesizer is getraind op ALLE echte data, niet alleen train-split.
     Dit geeft een conservatieve schatting (worst-case benadering).
     """
     from sklearn.neighbors import NearestNeighbors
-    from sklearn.preprocessing import MinMaxScaler
+    from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
 
-    numeric_cols = [c for c in real.columns if pd.api.types.is_numeric_dtype(real[c])]
-    if not numeric_cols:
-        return PrivacyReport(available=False, reason="Geen numerieke kolommen")
+    shared = [c for c in real.columns if c in synth.columns]
+    if primary_key and primary_key in shared:
+        shared.remove(primary_key)
 
-    real_num = real[numeric_cols].dropna()
-    synth_num = synth[numeric_cols].dropna()
+    numeric_cols = [c for c in shared if pd.api.types.is_numeric_dtype(real[c])]
+    cat_candidates = [c for c in shared if c not in numeric_cols]
 
-    if len(real_num) < 20 or len(synth_num) < 10:
-        return PrivacyReport(available=False, reason="Te weinig rijen voor analyse")
+    # Identifier-/vrije-tekstkolommen (bijna uniek) zijn geen quasi-identifier en
+    # zouden de one-hot matrix laten exploderen — uitsluiten en erover waarschuwen.
+    n_real = len(real)
+    cat_cols, excluded_cols = [], []
+    for c in cat_candidates:
+        ratio = real[c].nunique(dropna=True) / n_real if n_real else 1.0
+        (excluded_cols if ratio > _MAX_CARDINALITY_RATIO else cat_cols).append(c)
 
-    # Normaliseer op schaal [0, 1] van echte data
-    scaler = MinMaxScaler()
-    real_scaled = scaler.fit_transform(real_num).astype(np.float32)
-    synth_scaled = scaler.transform(synth_num).astype(np.float32)
+    if not numeric_cols and not cat_cols:
+        return PrivacyReport(
+            available=False,
+            excluded_cols=excluded_cols,
+            reason="Geen bruikbare kolommen voor afstandsberekening",
+        )
+
+    use_cols = numeric_cols + cat_cols
+    real_use = real[use_cols].dropna()
+    synth_use = synth[use_cols].dropna()
+
+    if len(real_use) < 20 or len(synth_use) < 10:
+        return PrivacyReport(
+            available=False,
+            excluded_cols=excluded_cols,
+            reason="Te weinig rijen voor analyse",
+        )
+
+    # Bouw één feature-matrix: [0, 1]-geschaalde numeriek + one-hot categorisch.
+    # Encoder/scaler op echte data fitten, daarna identiek op synth toepassen.
+    real_blocks, synth_blocks = [], []
+    if numeric_cols:
+        scaler = MinMaxScaler()
+        real_blocks.append(scaler.fit_transform(real_use[numeric_cols]))
+        synth_blocks.append(scaler.transform(synth_use[numeric_cols]))
+    if cat_cols:
+        enc = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+        real_blocks.append(enc.fit_transform(real_use[cat_cols].astype(str)))
+        synth_blocks.append(enc.transform(synth_use[cat_cols].astype(str)))
+
+    real_scaled = np.hstack(real_blocks).astype(np.float32)
+    synth_scaled = np.hstack(synth_blocks).astype(np.float32)
 
     # Sample bij grote datasets
     rng = np.random.default_rng(42)
@@ -193,7 +244,10 @@ def evaluate_privacy(real: pd.DataFrame, synth: pd.DataFrame) -> PrivacyReport:
     knn2.fit(real_train)
     dists2 = knn2.kneighbors(synth_scaled)[0]
     if n_neighbors == 2:
-        nndr = np.where(dists2[:, 1] > 0, dists2[:, 0] / dists2[:, 1], 1.0)
+        # Bij categorische exact-matches is de 2e buur vaak ook op afstand 0 (0/0):
+        # ratio dan op 1.0 zetten (synth gedraagt zich als een willekeurige buur).
+        second = dists2[:, 1]
+        nndr = np.divide(dists2[:, 0], second, out=np.ones_like(second), where=second > 0)
     else:
         nndr = np.ones(len(synth_scaled))
 
@@ -210,7 +264,10 @@ def evaluate_privacy(real: pd.DataFrame, synth: pd.DataFrame) -> PrivacyReport:
         dcr_ratio=round(dcr_ratio, 3),
         nndr_median=round(float(np.median(nndr)), 3),
         risk_level=risk_level,
-        n_cols=len(numeric_cols),
+        n_cols=len(use_cols),
+        n_numeric_cols=len(numeric_cols),
+        n_categorical_cols=len(cat_cols),
+        excluded_cols=excluded_cols,
     )
 
 
