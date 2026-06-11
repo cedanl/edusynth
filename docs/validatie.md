@@ -14,9 +14,17 @@ Meet hoe ver de verhoudingen tussen categorieën afwijken. Bereik `[0, 1]`, lage
 | `0.1 – 0.2` | Goed — kleine afwijkingen |
 | `> 0.2` | Let op — de verdeling wijkt merkbaar af |
 
-### Numerieke kolommen — Wasserstein-1 afstand
+### Numerieke kolommen — genormaliseerde Wasserstein-1 afstand
 
-Meet de gemiddelde verschuiving tussen de twee verdelingen. De schaal hangt af van de kolom (een afstand van 5 is anders voor een kolom in jaren dan voor een kolom in euro's).
+Meet de gemiddelde verschuiving tussen de twee verdelingen. De ruwe Wasserstein-afstand hangt af van de kolomschaal (een afstand van 5 betekent iets anders voor jaren dan voor euro's), daarom wordt de waarde gedeeld door de **IQR** (interkwartielafstand) van de echte kolom. Het resultaat — de **score** — ligt op dezelfde schaal als de TV-afstand, zodat alle kolommen vergelijkbaar zijn en even zwaar meetellen in het eindoordeel.
+
+| Score | Betekenis |
+|---|---|
+| `< 0.1` | Uitstekend |
+| `0.1 – 0.2` | Goed |
+| `> 0.2` | Let op — de verdeling wijkt merkbaar af |
+
+Het rapport toont de score als primaire waarde en de ruwe Wasserstein-afstand ernaast.
 
 ## Distributieplots
 

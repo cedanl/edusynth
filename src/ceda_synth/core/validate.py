@@ -22,9 +22,7 @@ class Report:
         return all(r.get("ok", True) for r in self.rows)
 
     def to_dataframe(self) -> pd.DataFrame:
-        return (
-            pd.DataFrame(self.rows).sort_values("distance", ascending=False).reset_index(drop=True)
-        )
+        return pd.DataFrame(self.rows).sort_values("score", ascending=False).reset_index(drop=True)
 
     def print(self) -> None:
         from rich.console import Console
@@ -34,12 +32,20 @@ class Report:
         table = Table(title="Validatierapport")
         table.add_column("Kolom")
         table.add_column("Type")
-        table.add_column("Afstand", justify="right")
+        table.add_column("Score", justify="right")  # vergelijkbaar: TV / genorm. Wasserstein
+        table.add_column("Ruw", justify="right")
         table.add_column("Metric")
         table.add_column("OK")
-        for r in sorted(self.rows, key=lambda x: x["distance"], reverse=True):
+        for r in sorted(self.rows, key=lambda x: x["score"], reverse=True):
             ok = "✓" if r.get("ok", True) else "✗"
-            table.add_row(r["column"], r["dtype"], f"{r['distance']:.4f}", r["metric"], ok)
+            table.add_row(
+                r["column"],
+                r["dtype"],
+                f"{r['score']:.4f}",
+                f"{r['distance']:.4f}",
+                r["metric"],
+                ok,
+            )
         console.print(table)
 
 
@@ -51,11 +57,21 @@ def _count_modes(series: pd.Series) -> int:
     return max(1, len(peaks))
 
 
+# Drempel voor het vergelijkbare `score`-veld (TV-afstand én genormaliseerde
+# Wasserstein liggen na normalisatie op dezelfde [0, ~]-schaal).
+_SCORE_OK = 0.2
+
+
 def evaluate(real: pd.DataFrame, synth: pd.DataFrame) -> Report:
     """Vergelijk *real* en *synth* kolom voor kolom.
 
     Categorisch → Total Variation afstand [0, 1]
-    Numeriek    → Wasserstein-1 afstand   [0, ∞)
+    Numeriek    → Wasserstein-1 afstand, genormaliseerd op de IQR van de echte kolom
+
+    Elke rij krijgt een `score`: TV-afstand (categorisch) of genormaliseerde
+    Wasserstein (numeriek). Doordat beide op dezelfde schaal liggen, telt elke
+    kolom even zwaar mee in het eindoordeel — een `distance` van 0.3 voor een
+    jaarveld is niet langer onvergelijkbaar met 0.3 voor een EC-score.
     """
     rows = []
     modal_flags = []
@@ -68,11 +84,14 @@ def evaluate(real: pd.DataFrame, synth: pd.DataFrame) -> Report:
 
         if pd.api.types.is_numeric_dtype(real[col]):
             dist = float(wasserstein_distance(r.to_numpy(float), s.to_numpy(float)))
+            score = dist / _spread(r)
             row: dict = {
                 "column": col,
                 "dtype": "numeric",
                 "distance": round(dist, 4),
+                "score": round(score, 4),
                 "metric": "wasserstein",
+                "ok": score < _SCORE_OK,
             }
             r_modes = _count_modes(r)
             s_modes = _count_modes(s)
@@ -93,12 +112,29 @@ def evaluate(real: pd.DataFrame, synth: pd.DataFrame) -> Report:
                     "column": col,
                     "dtype": "categorical",
                     "distance": round(dist, 4),
+                    "score": round(dist, 4),
                     "metric": "tv",
-                    "ok": dist < 0.2,
+                    "ok": dist < _SCORE_OK,
                 }
             )
 
     return Report(rows=rows, modal_flags=modal_flags)
+
+
+def _spread(real: pd.Series) -> float:
+    """Schaalmaat om Wasserstein te normaliseren: IQR, met fallback std → bereik → 1.
+
+    Een constante kolom (alle fallbacks 0) geeft 1.0 terug; de afstand blijft dan
+    gelijk aan de ruwe Wasserstein (0 bij identieke data).
+    """
+    iqr = float(real.quantile(0.75) - real.quantile(0.25))
+    if iqr > 0:
+        return iqr
+    std = float(real.std())
+    if std > 0:
+        return std
+    rng = float(real.max() - real.min())
+    return rng if rng > 0 else 1.0
 
 
 def _tv_distance(real: pd.Series, synth: pd.Series) -> float:
@@ -328,18 +364,21 @@ def usage_recommendation(report: Report, priv: PrivacyReport | None = None) -> s
             "Pas de syntheseinstellingen aan of raadpleeg uw FG."
         )
 
-    tv_rows = [r for r in report.rows if r.get("metric") == "tv"]
-    max_tv = max((r["distance"] for r in tv_rows), default=0.0)
-    n_failed = sum(1 for r in tv_rows if not r.get("ok", True))
+    # Alle kolommen tellen mee — numeriek (genorm. Wasserstein) net zo goed als
+    # categorisch (TV). Een volledig verkeerd gesynthetiseerde numerieke kolom
+    # beïnvloedt het eindoordeel nu wél.
+    scored = [r for r in report.rows if "score" in r]
+    max_score = max((r["score"] for r in scored), default=0.0)
+    n_failed = sum(1 for r in scored if not r.get("ok", True))
 
-    if max_tv < 0.1 and n_failed == 0:
+    if max_score < 0.1 and n_failed == 0:
         return "Geschikt voor rapportages, kruistabellen en publicatie."
     if n_failed == 0:
         return (
             "Geschikt voor exploratieve analyse en trendgrafieken — "
             "controleer absolute frequenties vóór publicatie."
         )
-    if n_failed <= max(1, len(tv_rows) // 3):
+    if n_failed <= max(1, len(scored) // 3):
         return (
             "Geschikt voor patroonverkenning en interne tests — "
             "niet aanbevolen voor publicatie van statistieken."

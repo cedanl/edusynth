@@ -23,16 +23,18 @@ _RISK_MSG = {"laag": st.success, "matig": st.warning, "hoog": st.error}
 
 
 def _verdeling_verdict(report: Report) -> tuple[str, str]:
-    tv_rows = [r for r in report.rows if r.get("metric") == "tv"]
-    if not tv_rows:
-        return "Alleen numeriek", "laag"
-    max_tv = max(r["distance"] for r in tv_rows)
-    n_failed = sum(1 for r in tv_rows if not r.get("ok", True))
-    if max_tv < 0.1:
+    # Numeriek (genorm. Wasserstein) en categorisch (TV) staan na normalisatie op
+    # dezelfde schaal en tellen even zwaar mee via het `score`-veld.
+    scored = [r for r in report.rows if "score" in r]
+    if not scored:
+        return "Geen kolommen", "onbekend"
+    max_score = max(r["score"] for r in scored)
+    n_failed = sum(1 for r in scored if not r.get("ok", True))
+    if max_score < 0.1:
         return "Uitstekend", "laag"
     if n_failed == 0:
         return "Goed", "laag"
-    if n_failed <= max(1, len(tv_rows) // 3):
+    if n_failed <= max(1, len(scored) // 3):
         return "Matig", "matig"
     return "Let op", "hoog"
 
@@ -186,19 +188,35 @@ def _render_validation(
     st.divider()
 
     with st.expander("Statistisch detail — verdeling per kolom", expanded=False):
-        rdf = report.to_dataframe()
-        if "ok" in rdf.columns:
-            rdf = rdf.copy()
-            rdf["ok"] = rdf["ok"].map({True: "✓", False: "✗"})
-        # Toon modal warnings per rij
+        rdf = report.to_dataframe().copy()
+        # Toon modal warnings per rij, dan de kolom verwijderen
         if "modal_warning" in rdf.columns:
             for _, row in rdf[rdf["modal_warning"].notna()].iterrows():
                 st.warning(f"⚠️ **{row['column']}**: bimodaliteit — {row['modal_warning']}")
             rdf = rdf.drop(columns=["modal_warning"])
-        st.dataframe(rdf, use_container_width=True)
+        if "ok" in rdf.columns:
+            rdf["ok"] = rdf["ok"].map({True: "✓", False: "✗"})
+        # Score (vergelijkbaar) als primaire kolom, ruwe afstand ernaast
+        rdf = rdf.rename(
+            columns={
+                "column": "Kolom",
+                "dtype": "Type",
+                "score": "Score (genorm.)",
+                "distance": "Ruwe afstand",
+                "metric": "Metric",
+                "ok": "OK",
+            }
+        )
+        order = [
+            c
+            for c in ["Kolom", "Type", "Score (genorm.)", "Ruwe afstand", "Metric", "OK"]
+            if c in rdf.columns
+        ]
+        st.dataframe(rdf[order], use_container_width=True)
         st.caption(
-            "TV-afstand: < 0.1 = uitstekend · < 0.2 = goed · > 0.2 = let op. "
-            "Wasserstein-schaal hangt af van de kolomwaarden. "
+            "Score < 0.1 = uitstekend · < 0.2 = goed · > 0.2 = let op. "
+            "Categorisch = TV-afstand; numeriek = Wasserstein genormaliseerd op de "
+            "IQR van de echte kolom, zodat alle kolommen vergelijkbaar zijn. "
             "**Deze metrieken meten statistische gelijkenis, niet privacy.**"
         )
 

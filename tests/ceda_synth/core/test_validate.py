@@ -8,6 +8,7 @@ from ceda_synth.core.validate import (
     PrivacyReport,
     Report,
     _count_modes,
+    _spread,
     _tv_distance,
     evaluate,
     evaluate_pairs,
@@ -69,6 +70,56 @@ def test_report_has_modal_flags_field():
     report = evaluate(df, df.copy())
     assert hasattr(report, "modal_flags")
     assert isinstance(report.modal_flags, list)
+
+
+# ── Wasserstein IQR-normalisatie ────────────────────────────────────────────────
+
+
+def test_numeric_row_has_score_and_ok():
+    df = _make_df()
+    report = evaluate(df, df.copy())
+    num = next(r for r in report.rows if r["metric"] == "wasserstein")
+    assert "score" in num
+    assert "ok" in num
+    assert num["score"] == 0.0  # identieke data
+    assert num["ok"] is True
+
+
+def test_score_is_scale_invariant():
+    # Zelfde relatieve verschuiving op twee verschillende schalen → zelfde score.
+    rng = np.random.default_rng(7)
+    base = rng.normal(0, 1, 200)
+    small = pd.DataFrame({"x": base})
+    large = pd.DataFrame({"x": base * 1000})
+    # synth = echte data 0.5·sd verschoven, op elke schaal
+    small_s = pd.DataFrame({"x": base + 0.5})
+    large_s = pd.DataFrame({"x": base * 1000 + 500})
+    score_small = evaluate(small, small_s).rows[0]["score"]
+    score_large = evaluate(large, large_s).rows[0]["score"]
+    assert abs(score_small - score_large) < 0.01
+
+
+def test_constant_column_does_not_crash():
+    df = pd.DataFrame({"const": [5, 5, 5, 5, 5]})
+    report = evaluate(df, df.copy())
+    assert report.rows[0]["score"] == 0.0
+    assert report.rows[0]["ok"] is True
+
+
+def test_spread_fallback_chain():
+    assert _spread(pd.Series([1, 2, 3, 4, 5])) > 0  # IQR
+    assert _spread(pd.Series([5, 5, 5, 5, 5])) == 1.0  # constante kolom → 1.0
+
+
+def test_usage_recommendation_flags_bad_numeric():
+    # Numerieke kolom volledig verkeerd gesynthetiseerd → mag niet "rapportages" opleveren.
+    rng = np.random.default_rng(8)
+    real = pd.DataFrame({"score": rng.normal(100, 10, 200)})
+    synth = pd.DataFrame({"score": rng.normal(500, 10, 200)})  # ver weg
+    report = evaluate(real, synth)
+    assert not report.rows[0]["ok"]
+    rec = usage_recommendation(report)
+    assert "rapportages, kruistabellen en publicatie" not in rec
 
 
 # ── Privacyvalidatie ───────────────────────────────────────────────────────────
