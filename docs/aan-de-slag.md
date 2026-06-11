@@ -15,6 +15,8 @@ uv sync
 uv run ceda-synth app
 ```
 
+De app opent automatisch in je browser. Gebeurt dat niet, open dan de URL die in de terminal verschijnt.
+
 ## De app gebruiken
 
 ### Stap 1 — Data uploaden

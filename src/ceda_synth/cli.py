@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -52,8 +53,26 @@ def main(argv: list[str] | None = None) -> None:
         _cmd_validate(args)
 
 
+# Huisstijl + privacy als env-vars, zodat ze ook gelden bij een pip-install
+# vanuit een willekeurige map (Streamlit leest .streamlit/config.toml alleen
+# relatief aan de werkmap). setdefault laat de container/gebruiker overschrijven —
+# bv. STREAMLIT_SERVER_HEADLESS in de devcontainer. Headless zetten we hier
+# bewust niet: zo opent de browser vanzelf op een desktop.
+_APP_ENV = {
+    "STREAMLIT_THEME_PRIMARY_COLOR": "#3D68EC",
+    "STREAMLIT_THEME_BACKGROUND_COLOR": "#FFFFFF",
+    "STREAMLIT_THEME_SECONDARY_BACKGROUND_COLOR": "#F9FAFB",
+    "STREAMLIT_THEME_TEXT_COLOR": "#000000",
+    "STREAMLIT_THEME_FONT": "sans serif",
+    "STREAMLIT_BROWSER_GATHER_USAGE_STATS": "false",
+}
+
+
 def _cmd_app() -> None:
     from streamlit.web import cli as stcli
+
+    for key, value in _APP_ENV.items():
+        os.environ.setdefault(key, value)
 
     app_file = str(Path(__file__).parent / "app.py")
     sys.argv = ["streamlit", "run", app_file]
