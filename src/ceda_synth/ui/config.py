@@ -8,8 +8,6 @@ import pandas as pd
 import streamlit as st
 from sdv.metadata import SingleTableMetadata
 
-from ceda_synth.core.synthesize import ctgan_is_feasible, estimate_ctgan_width
-
 _SDTYPES = ["categorical", "numerical", "datetime", "id"]
 
 
@@ -18,7 +16,6 @@ class TabularConfig:
     col_types: dict[str, str]
     primary_key: str | None
     n_rows: int
-    synthesizer: str = "gaussian"
 
 
 @dataclass
@@ -69,38 +66,6 @@ def render_tabular(
             "gebruik 'SDV demo-data → Sequentieel' of PAR Synthesizer in SDV direct."
         )
 
-    # ── Synthesizer — Gaussian Copula standaard, CTGAN als geavanceerde optie
-    synthesizer = "gaussian"
-    encoded_width = estimate_ctgan_width(df, col_types)
-    feasible, _ = ctgan_is_feasible(len(df), encoded_width)
-
-    with st.expander("Geavanceerd: synthesizer wijzigen", expanded=False):
-        override = st.radio(
-            "Kies synthesizer:",
-            ["Gaussian Copula (standaard)", "CTGAN (experimenteel)"],
-            index=0,
-            key="synth_override",
-            horizontal=True,
-        )
-        if override.startswith("CTGAN"):
-            synthesizer = "ctgan"
-            if not feasible:
-                top_cols = sorted(
-                    ((c, df[c].nunique()) for c, t in col_types.items() if t == "categorical"),
-                    key=lambda x: x[1],
-                    reverse=True,
-                )[:3]
-                col_list = ", ".join(f"**{c}** ({n} waarden)" for c, n in top_cols)
-                st.warning(
-                    f"Deze dataset heeft te veel categorische variaties voor CTGAN "
-                    f"(o.a. {col_list}). De kans op een geheugenfout is groot."
-                )
-            else:
-                st.info(
-                    "CTGAN traint een neuraal netwerk — dit duurt langer dan "
-                    "Gaussian Copula en vereist meer geheugen."
-                )
-
     n_rows = int(
         st.number_input("Aantal rijen", min_value=10, max_value=500_000, value=len(df), step=100)
     )
@@ -108,7 +73,6 @@ def render_tabular(
         col_types=col_types,
         primary_key=primary_key,
         n_rows=n_rows,
-        synthesizer=synthesizer,
     )
 
 

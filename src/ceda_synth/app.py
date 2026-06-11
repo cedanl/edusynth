@@ -6,7 +6,6 @@ import streamlit as st
 from sdv.metadata import SingleTableMetadata
 from sdv.single_table import GaussianCopulaSynthesizer
 
-from ceda_synth.core.synthesize import auto_epochs, safe_batch_size
 from ceda_synth.ui import config as cfg_ui
 from ceda_synth.ui import datasource, results
 from ceda_synth.ui.theme import inject_css
@@ -33,44 +32,24 @@ def _run_sequential(src: datasource.DataSource, cfg: cfg_ui.SequentialConfig) ->
 
 
 def _run_tabular(src: datasource.DataSource, cfg: cfg_ui.TabularConfig) -> None:
-    from sdv.single_table import CTGANSynthesizer
-
     meta = SingleTableMetadata()
     for col_name, sdtype in cfg.col_types.items():
         meta.add_column(col_name, sdtype=sdtype)
     if cfg.primary_key:
         meta.set_primary_key(cfg.primary_key)
 
-    label = (
-        "CTGAN trainen (duurt langer)…"
-        if cfg.synthesizer == "ctgan"
-        else "Model trainen en data genereren…"
-    )
-    with st.spinner(label):
+    with st.spinner("Model trainen en data genereren…"):
         try:
-            if cfg.synthesizer == "ctgan":
-                batch_size = safe_batch_size(len(src.df))
-                epochs = auto_epochs(len(src.df))
-                model = CTGANSynthesizer(meta, epochs=epochs, batch_size=batch_size)
-            else:
-                model = GaussianCopulaSynthesizer(meta)
+            model = GaussianCopulaSynthesizer(meta)
             model.fit(src.df)
             st.session_state["synth"] = model.sample(num_rows=cfg.n_rows)
             st.session_state["n_label"] = f"{cfg.n_rows:,} rijen"
             st.session_state["n_generated"] = cfg.n_rows
             st.session_state["col_types"] = cfg.col_types
             st.session_state["primary_key"] = cfg.primary_key
-            st.session_state["synthesizer"] = cfg.synthesizer
             st.session_state["metadata_dict"] = meta.to_dict()
         except Exception as exc:
-            msg = str(exc).lower()
-            if "buffer size" in msg or "memory" in msg or "oom" in msg:
-                st.error(
-                    "De dataset is te complex voor CTGAN. "
-                    "Probeer Gaussian Copula — die werkt beter met veel categorische kolommen."
-                )
-            else:
-                st.error(f"Fout bij genereren: {exc}")
+            st.error(f"Fout bij genereren: {exc}")
             st.stop()
 
 
@@ -150,7 +129,6 @@ results.render(
     modality=source.modality,
     demo_name=source.demo_name,
     n_generated=st.session_state["n_generated"],
-    synthesizer=st.session_state.get("synthesizer", "gaussian"),
     metadata_dict=st.session_state.get("metadata_dict"),
     real_metadata_dict=st.session_state.get("real_metadata_dict"),
 )

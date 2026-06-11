@@ -107,7 +107,6 @@ def render(
     modality: str | None,
     demo_name: str | None,
     n_generated: int,
-    synthesizer: str = "gaussian",
     metadata_dict: dict | None = None,
     real_metadata_dict: dict | None = None,
 ) -> None:
@@ -145,7 +144,6 @@ def render(
             modality=modality,
             demo_name=demo_name,
             n_generated=n_generated,
-            synthesizer=synthesizer,
             verdict=verdict,
             recommendation=recommendation,
             metadata_dict=metadata_dict,
@@ -318,7 +316,6 @@ def _render_download(
     modality: str | None,
     demo_name: str | None,
     n_generated: int,
-    synthesizer: str,
     verdict: dict,
     recommendation: str,
     metadata_dict: dict | None,
@@ -336,7 +333,7 @@ def _render_download(
 
     with st.expander("Reproductie & Parameters", expanded=False):
         params: dict = {
-            "synthesizer": synthesizer,
+            "synthesizer": "gaussian",
             "n_rows_or_sequences": n_generated,
             "modality": modality or "single_table",
             "sdv_version": sdv_version,
