@@ -132,52 +132,6 @@ def _looks_like_date(values: list) -> bool:
     return matches >= len(sample) * 0.7
 
 
-def safe_batch_size(n_rows: int) -> int:
-    """Bereken een veilige CTGAN batch_size die niet groter is dan de dataset."""
-    return min(500, max(50, n_rows // 10))
-
-
-def auto_epochs(n_rows: int) -> int:
-    """Kies automatisch het aantal CTGAN-epochs op basis van datasetgrootte."""
-    if n_rows < 1_000:
-        return 200
-    if n_rows < 10_000:
-        return 100
-    if n_rows < 50_000:
-        return 50
-    return 30
-
-
-def estimate_ctgan_width(df: pd.DataFrame, col_types: dict[str, str]) -> int:
-    """Schat de breedte van de CTGAN one-hot encoded matrix.
-
-    Categorische kolommen worden one-hot encoded (breedte = unieke waarden),
-    numerieke kolommen tellen als 1.
-    """
-    width = 0
-    for col_name, sdtype in col_types.items():
-        if col_name not in df.columns:
-            continue
-        if sdtype == "categorical":
-            width += df[col_name].nunique()
-        else:
-            width += 1
-    return width
-
-
-def ctgan_is_feasible(n_rows: int, encoded_width: int) -> tuple[bool, str]:
-    """Check of CTGAN haalbaar is qua geheugen.
-
-    Returns (feasible, reason).
-    """
-    estimated_bytes = n_rows * encoded_width * 4 * 10
-    limit = 2 * 1024**3
-    if estimated_bytes > limit:
-        gb = estimated_bytes / 1024**3
-        return False, f"Geschat geheugengebruik: {gb:.1f} GiB (limiet: 2 GiB)"
-    return True, ""
-
-
 # ── Synthese ───────────────────────────────────────────────────────────────────
 
 
