@@ -351,6 +351,82 @@ def evaluate_pairs(real: pd.DataFrame, synth: pd.DataFrame) -> PairsReport:
     )
 
 
+# ── sdmetrics QualityReport ──────────────────────────────────────────────────────
+
+_SDMETRICS_MAX_ROWS = 5_000  # cap zodat de report responsive blijft bij grote sets
+
+
+@dataclass
+class SDMetricsReport:
+    """sdmetrics QualityReport — column shapes + column pair trends.
+
+    Vult de eigen TV/Wasserstein-snelvalidatie aan met peer-reviewed sdmetrics-
+    metrieken. Column Pair Trends dekt categorisch × categorisch
+    (ContingencySimilarity) en categorisch × numeriek — verbanden die de
+    Pearson-only `evaluate_pairs` mist.
+    """
+
+    available: bool
+    overall_score: float | None = None
+    column_shapes: list[dict] = field(default_factory=list)
+    column_pair_trends: list[dict] = field(default_factory=list)
+    reason: str = ""
+
+
+def _subsample(df: pd.DataFrame, cap: int) -> pd.DataFrame:
+    return df if len(df) <= cap else df.sample(cap, random_state=42)
+
+
+def _round_records(df: pd.DataFrame) -> list[dict]:
+    df = df.copy()
+    for col in df.select_dtypes("number").columns:
+        df[col] = df[col].round(4)
+    return df.to_dict("records")
+
+
+def evaluate_sdmetrics(
+    real: pd.DataFrame,
+    synth: pd.DataFrame,
+    metadata_dict: dict | None,
+) -> SDMetricsReport:
+    """Bereken de sdmetrics QualityReport voor *real* vs. *synth*.
+
+    Kolomparen met een zwakke samenhang in de echte data (onder de sdmetrics-
+    associatiedrempel) krijgen score NaN en blijven buiten beschouwing — dat is
+    geen fout. `get_score()` middelt met nanmean, dus de overall-score blijft
+    geldig zolang Column Shapes berekend kon worden.
+    """
+    if not metadata_dict or not metadata_dict.get("columns"):
+        return SDMetricsReport(available=False, reason="Geen metadata beschikbaar")
+
+    # sdmetrics vereist dat data en metadata exact dezelfde kolommen dekken.
+    cols = [c for c in real.columns if c in synth.columns and c in metadata_dict["columns"]]
+    if not cols:
+        return SDMetricsReport(available=False, reason="Geen gedeelde kolommen met metadata")
+
+    meta = {**metadata_dict, "columns": {c: metadata_dict["columns"][c] for c in cols}}
+    real_s = _subsample(real[cols], _SDMETRICS_MAX_ROWS)
+    synth_s = _subsample(synth[cols], _SDMETRICS_MAX_ROWS)
+
+    try:
+        from sdmetrics.reports.single_table import QualityReport
+
+        report = QualityReport()
+        report.generate(real_s, synth_s, meta, verbose=False)
+        overall = float(report.get_score())
+        shapes = _round_records(report.get_details("Column Shapes"))
+        pairs = _round_records(report.get_details("Column Pair Trends"))
+    except Exception as exc:
+        return SDMetricsReport(available=False, reason=str(exc))
+
+    return SDMetricsReport(
+        available=True,
+        overall_score=None if pd.isna(overall) else round(overall, 4),
+        column_shapes=shapes,
+        column_pair_trends=pairs,
+    )
+
+
 # ── Gebruiksaanbeveling ────────────────────────────────────────────────────────
 
 

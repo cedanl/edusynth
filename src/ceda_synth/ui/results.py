@@ -10,9 +10,11 @@ import yaml
 from ceda_synth.core.validate import (
     PairsReport,
     Report,
+    SDMetricsReport,
     evaluate,
     evaluate_pairs,
     evaluate_privacy,
+    evaluate_sdmetrics,
     usage_recommendation,
 )
 from ceda_synth.ui.theme import NPULS, apply_plotly_style
@@ -116,6 +118,7 @@ def render(
         report = evaluate(df, synth)
         priv = evaluate_privacy(df, synth, primary_key=primary_key)
         pairs = evaluate_pairs(df, synth)
+        sdm = evaluate_sdmetrics(df, synth, metadata_dict)
 
     verd_label, verd_risk = _verdeling_verdict(report)
     priv_label, priv_risk = _privacy_verdict(priv)
@@ -135,7 +138,7 @@ def render(
         ["Validatierapport", "Distributies", "Download & Reproductie"]
     )
     with tab_val:
-        _render_validation(report, priv, verdict, recommendation, pairs, primary_key)
+        _render_validation(report, priv, verdict, recommendation, pairs, primary_key, sdm)
     with tab_dist:
         _render_distributions(df, synth)
     with tab_dl:
@@ -161,6 +164,7 @@ def _render_validation(
     recommendation: str,
     pairs: PairsReport,
     primary_key: str | None,
+    sdm: SDMetricsReport,
 ) -> None:
     c1, c2, c3 = st.columns(3)
     _scorecard(c1, "Verdeling", verdict["verd_label"], verdict["verd_risk"])
@@ -276,6 +280,36 @@ def _render_validation(
         else:
             pairs_df = pd.DataFrame(pairs.flagged)
             st.dataframe(pairs_df, use_container_width=True)
+
+    _render_sdmetrics(sdm)
+
+
+def _render_sdmetrics(sdm: SDMetricsReport) -> None:
+    """Geavanceerde sdmetrics QualityReport (niveau 3) — citeerbaar voor publicatie."""
+    with st.expander("Geavanceerde kwaliteitsscore (sdmetrics)", expanded=False):
+        if not sdm.available:
+            st.info(f"Niet beschikbaar: {sdm.reason}")
+            return
+
+        if sdm.overall_score is not None:
+            st.metric("Overall quality score", f"{sdm.overall_score:.1%}")
+        st.caption(
+            "Peer-reviewed sdmetrics-metrieken — citeerbaar in een publicatie. "
+            "**Column Shapes** meet de verdeling per kolom (TVComplement / KSComplement); "
+            "**Column Pair Trends** meet samenhang tussen kolomparen, inclusief "
+            "categorisch × categorisch (ContingencySimilarity)."
+        )
+
+        if sdm.column_shapes:
+            st.markdown("**Column Shapes**")
+            st.dataframe(pd.DataFrame(sdm.column_shapes), use_container_width=True)
+        if sdm.column_pair_trends:
+            st.markdown("**Column Pair Trends**")
+            st.dataframe(pd.DataFrame(sdm.column_pair_trends), use_container_width=True)
+            st.caption(
+                "Kolomparen met een zwakke samenhang in de echte data krijgen score "
+                "*NaN* en blijven buiten het oordeel — dat is geen fout."
+            )
 
 
 # ── Distributies-tab ───────────────────────────────────────────────────────────

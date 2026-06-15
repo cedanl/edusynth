@@ -7,14 +7,24 @@ from ceda_synth.core.validate import (
     PairsReport,
     PrivacyReport,
     Report,
+    SDMetricsReport,
     _count_modes,
     _spread,
     _tv_distance,
     evaluate,
     evaluate_pairs,
     evaluate_privacy,
+    evaluate_sdmetrics,
     usage_recommendation,
 )
+
+
+def _metadata(df: pd.DataFrame) -> dict:
+    from sdv.metadata import SingleTableMetadata
+
+    meta = SingleTableMetadata()
+    meta.detect_from_dataframe(df)
+    return meta.to_dict()
 
 
 def _make_df():
@@ -332,6 +342,44 @@ def test_evaluate_pairs_flagged_structure():
         assert "real_corr" in f
         assert "synth_corr" in f
         assert "delta" in f
+
+
+# ── sdmetrics QualityReport ──────────────────────────────────────────────────────
+
+
+def test_sdmetrics_no_metadata_unavailable():
+    df = _make_df()
+    sdm = evaluate_sdmetrics(df, df.copy(), None)
+    assert isinstance(sdm, SDMetricsReport)
+    assert not sdm.available
+    assert sdm.overall_score is None
+
+
+def test_sdmetrics_identical_data_scores_high():
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame(
+        {
+            "geslacht": rng.choice(["1", "2"], 300),
+            "opleiding": rng.choice(["A", "B", "C"], 300),
+            "leeftijd": rng.integers(17, 30, 300),
+        }
+    )
+    sdm = evaluate_sdmetrics(df, df.copy(), _metadata(df))
+    assert sdm.available
+    assert sdm.overall_score is not None
+    assert sdm.overall_score > 0.9
+    # Column Shapes bevat één rij per (niet-id) kolom.
+    assert len(sdm.column_shapes) == 3
+
+
+def test_sdmetrics_strong_association_has_pair_score():
+    rng = np.random.default_rng(1)
+    x = rng.choice(["1", "2", "3"], 400)
+    df = pd.DataFrame({"x": x, "y": x})  # y volledig bepaald door x
+    sdm = evaluate_sdmetrics(df, df.copy(), _metadata(df))
+    assert sdm.available
+    assert len(sdm.column_pair_trends) == 1
+    assert sdm.column_pair_trends[0]["Score"] == 1.0
 
 
 # ── _count_modes ───────────────────────────────────────────────────────────────

@@ -26,6 +26,18 @@ Meet de gemiddelde verschuiving tussen de twee verdelingen. De ruwe Wasserstein-
 
 Het rapport toont de score als primaire waarde en de ruwe Wasserstein-afstand ernaast.
 
+## Geavanceerde kwaliteitsscore (sdmetrics)
+
+De TV- en Wasserstein-scores zijn een snelle vuistregel. Voor een **citeerbaar** oordeel toont de app onder _Geavanceerde kwaliteitsscore (sdmetrics)_ ook de officiële [sdmetrics](https://docs.sdv.dev/sdmetrics) `QualityReport`:
+
+- **Overall quality score** — één samenvattende score `[0, 1]`, hoger is beter.
+- **Column Shapes** — verdeling per kolom (TVComplement voor categorisch, KSComplement voor numeriek).
+- **Column Pair Trends** — samenhang tussen kolomparen, inclusief **categorisch × categorisch** (ContingencySimilarity) en categorisch × numeriek. Dit dekt verbanden die de eenvoudige Pearson-correlatie mist.
+
+Kolomparen met een zwakke samenhang in de echte data (onder de sdmetrics-associatiedrempel) krijgen score *NaN* en blijven buiten beschouwing — dat is geen fout, alleen een teken dat er weinig verband te bewaren viel. Bij grote datasets (> 5000 rijen) rekent de app op een steekproef zodat het rapport responsief blijft.
+
+Deze score is gebaseerd op een peer-reviewed methode en kan in een publicatie geciteerd worden.
+
 ## Distributieplots
 
 De app toont naast de scores ook histogrammen en staafdiagrammen van echte vs. synthetische data per kolom — zo zie je direct waar afwijkingen zitten.
