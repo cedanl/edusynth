@@ -10,7 +10,7 @@ from ceda_synth.core.synthesize import (
     _build_metadata,
     _detect_date_format,
     _load_schema,
-    apply_schema_bounds,
+    detect_datetime_format,
     fit,
     infer_column_hints,
     sample,
@@ -69,26 +69,14 @@ def test_detect_date_format_none_for_non_dates():
     assert _detect_date_format(["hbo", "wo", "mbo"]) is None
 
 
-# ── schema min/max bounds ────────────────────────────────────────────────────────
+def test_detect_datetime_format_on_series():
+    # Publieke helper die de app gebruikt — werkt op een Series, negeert NaN.
+    s = pd.Series(["20190101", None, "20200315", "20211231"])
+    assert detect_datetime_format(s) == "%Y%m%d"
 
 
-def test_apply_schema_bounds_clips_numeric():
-    df = pd.DataFrame({"inschrijvingsjaar": [1990, 2019, 2050]})
-    out = apply_schema_bounds(df, FIXTURE_SCHEMA)  # schema: min 2015, max 2023
-    assert out["inschrijvingsjaar"].min() == 2015
-    assert out["inschrijvingsjaar"].max() == 2023
-
-
-def test_apply_schema_bounds_no_schema_is_noop():
-    df = pd.DataFrame({"x": [1, 2, 3]})
-    out = apply_schema_bounds(df, None)
-    pd.testing.assert_frame_equal(out, df)
-
-
-def test_apply_schema_bounds_ignores_missing_columns():
-    df = pd.DataFrame({"andere_kolom": [1, 2, 3]})
-    out = apply_schema_bounds(df, FIXTURE_SCHEMA)
-    pd.testing.assert_frame_equal(out, df)
+def test_detect_datetime_format_none_for_categorical_series():
+    assert detect_datetime_format(pd.Series(["hbo", "wo", "hbo"])) is None
 
 
 def test_fit_seed_is_optional():

@@ -148,6 +148,15 @@ def _looks_like_date(values: list) -> bool:
     return _detect_date_format(values) is not None
 
 
+def detect_datetime_format(series: pd.Series) -> str | None:
+    """Detecteer het strftime-formaat van een (string) datumkolom, of None.
+
+    Gebruikt door de app om datumkolommen het juiste ``datetime_format`` mee te
+    geven zonder schema — de app kent immers geen schemabestand.
+    """
+    return _detect_date_format(series.dropna().head(20).tolist())
+
+
 # ── Synthese ───────────────────────────────────────────────────────────────────
 
 
@@ -224,23 +233,3 @@ def _build_metadata(schema: dict) -> SingleTableMetadata:
             kwargs["datetime_format"] = col.get("datetime_format", _DEFAULT_DATETIME_FORMAT)
         metadata.add_column(col_name, **kwargs)
     return metadata
-
-
-def apply_schema_bounds(df: pd.DataFrame, schema_path: Path | None) -> pd.DataFrame:
-    """Dwing de min/max uit het schema af op numerieke kolommen (domeinhandhaving).
-
-    SDV 1.37 kent geen scalar-range-constraint meer (de oude ``ScalarRange`` werkt
-    niet met ``add_constraints``), dus klemmen we waarden buiten het schemadomein na
-    het samplen — zo komen er geen negatieve EC-scores of jaren buiten bereik uit.
-    """
-    if schema_path is None:
-        return df
-    schema = _load_schema(schema_path)
-    result = df.copy()
-    for col_name, col in schema.get("columns", {}).items():
-        low, high = col.get("min"), col.get("max")
-        if col_name not in result.columns or (low is None and high is None):
-            continue
-        if pd.api.types.is_numeric_dtype(result[col_name]):
-            result[col_name] = result[col_name].clip(lower=low, upper=high)
-    return result
