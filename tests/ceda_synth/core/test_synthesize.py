@@ -3,6 +3,7 @@
 import inspect
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from ceda_synth.core.synthesize import (
@@ -10,9 +11,11 @@ from ceda_synth.core.synthesize import (
     _build_metadata,
     _detect_date_format,
     _load_schema,
+    build_sequential_metadata,
     detect_datetime_format,
     fit,
     infer_column_hints,
+    infer_sequence_columns,
     sample,
 )
 
@@ -120,8 +123,6 @@ def test_hints_returns_column_hint_objects():
 
 
 def test_hints_no_suggestion_for_continuous_numeric():
-    import numpy as np
-
     rng = np.random.default_rng(0)
     df = pd.DataFrame({"inkomen": rng.integers(20_000, 80_000, 200)})
     hints = infer_column_hints(df)
@@ -142,3 +143,54 @@ def test_column_hint_has_suggestion_property():
     h_without = ColumnHint("y", "categorical", "categorical", "test", 0.0)
     assert h_with.has_suggestion is True
     assert h_without.has_suggestion is False
+
+
+# ── Sequentieel / longitudinaal ──────────────────────────────────────────────────
+
+
+def _longitudinal_df(n_students: int = 20, years: int = 4) -> pd.DataFrame:
+    rng = np.random.default_rng(0)
+    return pd.DataFrame(
+        {
+            "student_id": np.repeat(np.arange(n_students), years),
+            "studiejaar": list(range(2018, 2018 + years)) * n_students,
+            "ec": rng.integers(0, 60, n_students * years),
+        }
+    )
+
+
+def test_infer_sequence_columns_detects_longitudinal():
+    looks, seq_key, seq_index = infer_sequence_columns(_longitudinal_df())
+    assert looks is True
+    assert seq_key == "student_id"
+    assert seq_index == "studiejaar"  # tijd-naam-hint wint
+
+
+def test_infer_sequence_columns_flat_data_not_longitudinal():
+    # Alle rijen uniek → geen herhaalde entiteit → niet longitudinaal
+    df = pd.DataFrame({"id": range(50), "waarde": range(50)})
+    looks, seq_key, _ = infer_sequence_columns(df)
+    assert looks is False
+    assert seq_key is None
+
+
+def test_build_sequential_metadata_sets_key_and_index():
+    df = _longitudinal_df()
+    md = build_sequential_metadata(df, "student_id", "studiejaar")
+    table = md.tables["data"]
+    assert table.sequence_key == "student_id"
+    assert table.sequence_index == "studiejaar"
+    assert table.columns["student_id"]["sdtype"] == "id"
+    assert table.columns["studiejaar"]["sdtype"] == "numerical"
+
+
+def test_build_sequential_metadata_feeds_par():
+    from sdv.sequential import PARSynthesizer
+
+    df = _longitudinal_df()
+    md = build_sequential_metadata(df, "student_id", "studiejaar")
+    model = PARSynthesizer(md, epochs=1, verbose=False)
+    model.fit(df)
+    out = model.sample(num_sequences=3)
+    assert set(out.columns) == set(df.columns)
+    assert out["student_id"].nunique() == 3

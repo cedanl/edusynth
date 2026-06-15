@@ -23,7 +23,7 @@ Dit model is stabiel, snel en goed interpreteerbaar — ideaal voor enkelvoudige
 
 - **Kleine datasets (< 500 rijen)** — correlatieramingen worden instabiel
 - **Sterke niet-lineaire verbanden** — Gaussian Copula mist complexe interacties
-- **Longitudinale data met studentpaden** — gebruik hiervoor SDV's `PARSynthesizer` (nog niet geïntegreerd in ceda-synth)
+- **Longitudinale data met studentpaden** — hiervoor schakelt de app over op SDV's `PARSynthesizer`. Geef je een upload met meerdere rijen per entiteit over de tijd, dan kies je een sequence key (ID per entiteit) en sequence index (tijdkolom); PAR behoudt de volgorde binnen elke entiteit.
 
 ## Relatie tot SDV
 

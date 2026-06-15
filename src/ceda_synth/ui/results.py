@@ -116,6 +116,7 @@ def render(
     demo_name: str | None,
     n_generated: int,
     random_seed: int | None = None,
+    seq_info: dict | None = None,
     metadata_dict: dict | None = None,
     real_metadata_dict: dict | None = None,
 ) -> None:
@@ -155,6 +156,7 @@ def render(
             demo_name=demo_name,
             n_generated=n_generated,
             random_seed=random_seed,
+            seq_info=seq_info,
             verdict=verdict,
             recommendation=recommendation,
             metadata_dict=metadata_dict,
@@ -389,6 +391,7 @@ def _render_download(
     demo_name: str | None,
     n_generated: int,
     random_seed: int | None,
+    seq_info: dict | None,
     verdict: dict,
     recommendation: str,
     metadata_dict: dict | None,
@@ -497,7 +500,14 @@ def _render_download(
 
         with st.expander("Python-code voor automatisering", expanded=False):
             py_code = _build_code(
-                col_types, primary_key, modality, demo_name, n_generated, sdv_version, random_seed
+                col_types,
+                primary_key,
+                modality,
+                demo_name,
+                n_generated,
+                sdv_version,
+                random_seed,
+                seq_info,
             )
             st.code(py_code, language="python")
             requirements_txt = f"sdv=={sdv_version}\npandas>=2.0\npyyaml>=6.0\n"
@@ -517,12 +527,33 @@ def _build_code(
     n_generated: int,
     sdv_version: str = "",
     random_seed: int | None = None,
+    seq_info: dict | None = None,
 ) -> str:
     version_comment = f"# sdv=={sdv_version}\n" if sdv_version else ""
     # np.random.seed() vóór fit() maakt de output reproduceerbaar (zie set_seed).
     seed_import = "import numpy as np\n" if random_seed is not None else ""
     seed_line = f"\nnp.random.seed({random_seed})" if random_seed is not None else ""
     if modality == "sequential":
+        if seq_info:  # eigen longitudinale upload — metadata zelf opbouwen
+            key, idx, idx_sdtype = seq_info["key"], seq_info["index"], seq_info["index_sdtype"]
+            return f"""\
+{version_comment}{seed_import}import pandas as pd
+from sdv.metadata import Metadata
+from sdv.sequential import PARSynthesizer
+
+real = pd.read_csv("jouw_data.csv")
+
+metadata = Metadata.detect_from_dataframe(real, table_name="data")
+metadata.update_column("{key}", sdtype="id", table_name="data")
+metadata.update_column("{idx}", sdtype="{idx_sdtype}", table_name="data")
+metadata.set_sequence_key("{key}", table_name="data")
+metadata.set_sequence_index("{idx}", table_name="data")
+{seed_line}
+synthesizer = PARSynthesizer(metadata, epochs=128)
+synthesizer.fit(real)
+synth = synthesizer.sample(num_sequences={n_generated})
+synth.to_csv("synthetisch.csv", index=False)
+"""
         return f"""\
 {version_comment}{seed_import}import pandas as pd
 from sdv.datasets.demo import download_demo
@@ -530,7 +561,7 @@ from sdv.sequential import PARSynthesizer
 
 real, metadata = download_demo(modality="sequential", dataset_name="{demo_name}")
 {seed_line}
-synthesizer = PARSynthesizer(metadata, epochs=20)
+synthesizer = PARSynthesizer(metadata, epochs=128)
 synthesizer.fit(real)
 synth = synthesizer.sample(num_sequences={n_generated})
 synth.to_csv("synthetisch.csv", index=False)

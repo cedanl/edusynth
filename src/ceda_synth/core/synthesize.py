@@ -233,3 +233,74 @@ def _build_metadata(schema: dict) -> SingleTableMetadata:
             kwargs["datetime_format"] = col.get("datetime_format", _DEFAULT_DATETIME_FORMAT)
         metadata.add_column(col_name, **kwargs)
     return metadata
+
+
+# ── Sequentieel / longitudinaal ──────────────────────────────────────────────────
+
+_SEQ_INDEX_NAME_HINTS = ("jaar", "year", "datum", "date", "periode", "tijd", "maand", "kwartaal")
+_SEQ_KEY_NAME_HINTS = ("id", "nummer", "sleutel", "key", "student", "instelling", "pgn", "bsn")
+
+
+def infer_sequence_columns(df: pd.DataFrame) -> tuple[bool, str | None, str | None]:
+    """Raad of *df* longitudinaal is en welke kolommen sequence key/index zijn.
+
+    Heuristiek (voor goede defaults — de gebruiker kan altijd corrigeren):
+    - sequence index = de **tijdkolom**: numeriek/datum, met de minste unieke
+      waarden (de tijdstappen), bij voorkeur een tijd-naam (jaar, datum, …).
+    - sequence key = de **entiteit**: een kolom die zich herhaalt (≥ 2 rijen per
+      waarde) met meer unieke waarden dan de index, bij voorkeur een ID-naam.
+
+    Retourneert ``(lijkt_longitudinaal, seq_key, seq_index)``.
+    """
+    n = len(df)
+    counts = {c: df[c].nunique(dropna=True) for c in df.columns}
+    repeating = {c: u for c, u in counts.items() if 1 < u < n and n / u >= 2}
+
+    index_candidates = [
+        c
+        for c in df.columns
+        if pd.api.types.is_numeric_dtype(df[c])
+        or pd.api.types.is_datetime64_any_dtype(df[c])
+        or detect_datetime_format(df[c]) is not None
+    ]
+
+    def _index_rank(col: str) -> tuple[int, int]:
+        named = 0 if any(h in col.lower() for h in _SEQ_INDEX_NAME_HINTS) else 1
+        return (named, counts[col])  # tijd-naam eerst, dan minste tijdstappen
+
+    seq_index = min(index_candidates, key=_index_rank) if index_candidates else None
+
+    def _key_rank(col: str) -> tuple[int, int]:
+        named = 0 if any(h in col.lower() for h in _SEQ_KEY_NAME_HINTS) else 1
+        return (named, -counts[col])  # ID-naam eerst, dan meeste entiteiten
+
+    key_candidates = [c for c in repeating if c != seq_index]
+    seq_key = min(key_candidates, key=_key_rank) if key_candidates else None
+
+    return (seq_key is not None and seq_index is not None), seq_key, seq_index
+
+
+def build_sequential_metadata(df: pd.DataFrame, seq_key: str, seq_index: str) -> Any:
+    """Bouw SDV-metadata voor longitudinale data uit een geüploade tabel.
+
+    SDV eist dat de sequence index ``numerical`` of ``datetime`` is, anders crasht
+    ``set_sequence_index``. We forceren daarom het juiste type op key en index.
+    """
+    from sdv.metadata import Metadata
+
+    metadata = Metadata.detect_from_dataframe(df, table_name="data")
+    metadata.update_column(seq_key, sdtype="id", table_name="data")
+
+    index_col = df[seq_index]
+    if pd.api.types.is_numeric_dtype(index_col):
+        metadata.update_column(seq_index, sdtype="numerical", table_name="data")
+    elif pd.api.types.is_datetime64_any_dtype(index_col):
+        metadata.update_column(seq_index, sdtype="datetime", table_name="data")
+    elif (fmt := detect_datetime_format(index_col)) is not None:
+        metadata.update_column(seq_index, sdtype="datetime", datetime_format=fmt, table_name="data")
+    else:
+        metadata.update_column(seq_index, sdtype="numerical", table_name="data")
+
+    metadata.set_sequence_key(seq_key, table_name="data")
+    metadata.set_sequence_index(seq_index, table_name="data")
+    return metadata
