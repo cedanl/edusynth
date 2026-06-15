@@ -16,6 +16,7 @@ class TabularConfig:
     col_types: dict[str, str]
     primary_key: str | None
     n_rows: int
+    seed: int = 42
 
 
 @dataclass
@@ -23,6 +24,24 @@ class SequentialConfig:
     n_sequences: int
     seq_key: str | None = field(default=None)
     seq_idx: str | None = field(default=None)
+    seed: int = 42
+
+
+def _render_seed() -> int:
+    """Geavanceerde optie (niveau 2): vaste seed voor reproduceerbare output."""
+    with st.expander("Geavanceerd — reproduceerbaarheid", expanded=False):
+        seed = int(
+            st.number_input(
+                "Random seed",
+                min_value=0,
+                max_value=2**32 - 1,
+                value=42,
+                step=1,
+                help="Dezelfde seed + dezelfde data geeft identieke synthetische output. "
+                "Wordt opgeslagen in de parameters en de gegenereerde Python-code.",
+            )
+        )
+    return seed
 
 
 def render_tabular(
@@ -69,10 +88,12 @@ def render_tabular(
     n_rows = int(
         st.number_input("Aantal rijen", min_value=10, max_value=500_000, value=len(df), step=100)
     )
+    seed = _render_seed()
     return TabularConfig(
         col_types=col_types,
         primary_key=primary_key,
         n_rows=n_rows,
+        seed=seed,
     )
 
 
@@ -94,4 +115,5 @@ def render_sequential(df: pd.DataFrame, demo_meta: object) -> SequentialConfig:
             value=min(10, df[seq_key].nunique()) if seq_key else 10,
         )
     )
-    return SequentialConfig(n_sequences=n_sequences, seq_key=seq_key, seq_idx=seq_idx)
+    seed = _render_seed()
+    return SequentialConfig(n_sequences=n_sequences, seq_key=seq_key, seq_idx=seq_idx, seed=seed)

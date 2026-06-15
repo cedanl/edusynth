@@ -109,6 +109,7 @@ def render(
     modality: str | None,
     demo_name: str | None,
     n_generated: int,
+    random_seed: int | None = None,
     metadata_dict: dict | None = None,
     real_metadata_dict: dict | None = None,
 ) -> None:
@@ -146,6 +147,7 @@ def render(
             modality=modality,
             demo_name=demo_name,
             n_generated=n_generated,
+            random_seed=random_seed,
             verdict=verdict,
             recommendation=recommendation,
             metadata_dict=metadata_dict,
@@ -342,6 +344,7 @@ def _render_download(
     modality: str | None,
     demo_name: str | None,
     n_generated: int,
+    random_seed: int | None,
     verdict: dict,
     recommendation: str,
     metadata_dict: dict | None,
@@ -364,6 +367,8 @@ def _render_download(
             "modality": modality or "single_table",
             "sdv_version": sdv_version,
         }
+        if random_seed is not None:
+            params["random_seed"] = random_seed
         if col_types:
             params["columns"] = col_types
         if primary_key:
@@ -421,7 +426,7 @@ def _render_download(
 
         with st.expander("Python-code voor automatisering", expanded=False):
             py_code = _build_code(
-                col_types, primary_key, modality, demo_name, n_generated, sdv_version
+                col_types, primary_key, modality, demo_name, n_generated, sdv_version, random_seed
             )
             st.code(py_code, language="python")
             requirements_txt = f"sdv=={sdv_version}\npandas>=2.0\npyyaml>=6.0\n"
@@ -440,16 +445,20 @@ def _build_code(
     demo_name: str | None,
     n_generated: int,
     sdv_version: str = "",
+    random_seed: int | None = None,
 ) -> str:
     version_comment = f"# sdv=={sdv_version}\n" if sdv_version else ""
+    # np.random.seed() vóór fit() maakt de output reproduceerbaar (zie set_seed).
+    seed_import = "import numpy as np\n" if random_seed is not None else ""
+    seed_line = f"\nnp.random.seed({random_seed})" if random_seed is not None else ""
     if modality == "sequential":
         return f"""\
-{version_comment}import pandas as pd
+{version_comment}{seed_import}import pandas as pd
 from sdv.datasets.demo import download_demo
 from sdv.sequential import PARSynthesizer
 
 real, metadata = download_demo(modality="sequential", dataset_name="{demo_name}")
-
+{seed_line}
 synthesizer = PARSynthesizer(metadata, epochs=20)
 synthesizer.fit(real)
 synth = synthesizer.sample(num_sequences={n_generated})
@@ -460,7 +469,7 @@ synth.to_csv("synthetisch.csv", index=False)
     )
     pk_line = f'\nmetadata.set_primary_key("{primary_key}")' if primary_key else ""
     return f"""\
-{version_comment}import pandas as pd
+{version_comment}{seed_import}import pandas as pd
 from sdv.metadata import SingleTableMetadata
 from sdv.single_table import GaussianCopulaSynthesizer
 
@@ -468,7 +477,7 @@ real = pd.read_csv("jouw_data.csv")
 
 metadata = SingleTableMetadata()
 {col_defs}{pk_line}
-
+{seed_line}
 synthesizer = GaussianCopulaSynthesizer(metadata)
 synthesizer.fit(real)
 synth = synthesizer.sample(num_rows={n_generated})

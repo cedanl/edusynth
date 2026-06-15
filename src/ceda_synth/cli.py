@@ -33,6 +33,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Aantal te genereren rijen (standaard: zelfde als input).",
     )
+    p_synth.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed voor reproduceerbare output (zelfde seed + data → identiek).",
+    )
 
     # ceda-synth validate
     p_val = sub.add_parser("validate", help="Vergelijk echte en synthetische data.")
@@ -84,7 +90,7 @@ def _cmd_synthesize(args: argparse.Namespace) -> None:
 
     data = _read(args.input)
     n_rows = args.rows if args.rows is not None else len(data)
-    model = fit(data, args.schema)
+    model = fit(data, args.schema, seed=args.seed)
     result = sample(model, n_rows)
     _write(result, args.output)
 

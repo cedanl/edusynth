@@ -11,6 +11,7 @@ from ceda_synth.core.synthesize import (
     _load_schema,
     fit,
     infer_column_hints,
+    sample,
 )
 
 FIXTURE_SCHEMA = Path(__file__).parent.parent.parent / "fixtures" / "mini_schema.yaml"
@@ -31,6 +32,26 @@ def test_build_metadata_sets_primary_key():
 def test_fit_schema_path_is_optional():
     sig = inspect.signature(fit)
     assert sig.parameters["schema_path"].default is None
+
+
+def test_fit_seed_is_optional():
+    sig = inspect.signature(fit)
+    assert sig.parameters["seed"].default is None
+
+
+def test_same_seed_gives_identical_output():
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    data = pd.DataFrame(
+        {
+            "leeftijd": rng.integers(18, 70, 200),
+            "geslacht": rng.choice(["M", "V"], 200),
+        }
+    )
+    out_a = sample(fit(data, seed=42), 100)
+    out_b = sample(fit(data, seed=42), 100)
+    pd.testing.assert_frame_equal(out_a, out_b)
 
 
 # ── Kolomtype-hints ────────────────────────────────────────────────────────────
