@@ -429,10 +429,7 @@ def _render_download(
         mime="application/json",
         use_container_width=True,
     )
-    st.caption(
-        "Het validatierapport bundelt alle scores en synthese-parameters — bewaar het "
-        "naast de CSV voor latere verantwoording."
-    )
+    st.caption("Bevat alle scores en synthese-parameters. Bewaar het naast de CSV.")
 
     st.divider()
 
