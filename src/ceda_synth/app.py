@@ -6,7 +6,7 @@ import streamlit as st
 from sdv.metadata import SingleTableMetadata
 from sdv.single_table import GaussianCopulaSynthesizer
 
-from ceda_synth.core.synthesize import set_seed
+from ceda_synth.core.synthesize import detect_datetime_format, set_seed
 from ceda_synth.ui import config as cfg_ui
 from ceda_synth.ui import datasource, results
 from ceda_synth.ui.theme import inject_css
@@ -37,6 +37,13 @@ def _run_sequential(src: datasource.DataSource, cfg: cfg_ui.SequentialConfig) ->
 def _run_tabular(src: datasource.DataSource, cfg: cfg_ui.TabularConfig) -> None:
     meta = SingleTableMetadata()
     for col_name, sdtype in cfg.col_types.items():
+        # Datumkolommen: detecteer het formaat uit de data en geef het mee, anders
+        # valt SDV terug op ISO 8601 en faalt het op DUO-datums (YYYYMMDD).
+        if sdtype == "datetime":
+            fmt = detect_datetime_format(src.df[col_name])
+            if fmt is not None:
+                meta.add_column(col_name, sdtype="datetime", datetime_format=fmt)
+                continue
         meta.add_column(col_name, sdtype=sdtype)
     if cfg.primary_key:
         meta.set_primary_key(cfg.primary_key)

@@ -29,8 +29,9 @@ columns:
     role: primary_key
   inschrijvingsjaar:
     dtype: integer
-    min: 2015
-    max: 2024
+  inschrijfdatum:
+    dtype: date
+    datetime_format: "%Y%m%d"
   geslacht:
     dtype: categorical
     categories: ["1", "2"]
@@ -41,6 +42,18 @@ ceda-synth synthesize data.csv output.csv --schema schema.yaml --rows 1000
 ```
 
 Zonder `--schema` detecteert de CLI kolomtypes automatisch, net als de app.
+
+### Datumkolommen (`datetime_format`)
+
+Geef bij een `date`-kolom het formaat mee in [strftime](https://strftime.org/)-notatie. Zonder `datetime_format` gaat SDV uit van ISO 8601 (`YYYY-MM-DD`) en mislukt het parsen van DUO-datums (`YYYYMMDD`). Veelgebruikte waarden: `"%Y%m%d"` (20190101), `"%Y-%m-%d"` (2019-01-01), `"%d-%m-%Y"` (01-01-2019).
+
+In de **app** is een schema niet nodig: zodra je een kolom op `Datum` zet, detecteert de app het formaat uit de data en geeft het automatisch door aan SDV.
+
+### Domein van numerieke kolommen
+
+SDV houdt numerieke waarden automatisch binnen de range van je trainingsdata en respecteert gehele getallen (geen `1,2` aanmeldingen) — dit staat standaard aan. Categorische kolommen kunnen per definitie geen waarde buiten de bestaande categorieën krijgen.
+
+Hardere regels die SDV niet uit de data afleidt — een vast domein strakker dan de data, of cross-kolom-logica zoals `inschrijfjaar ≤ uitschrijfjaar` — staan op de roadmap.
 
 ### Reproduceerbaarheid (`--seed`)
 
