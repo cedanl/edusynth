@@ -12,6 +12,7 @@ from ceda_synth.core.validate import (
     _count_modes,
     _spread,
     _tv_distance,
+    build_validation_report,
     evaluate,
     evaluate_pairs,
     evaluate_privacy,
@@ -267,6 +268,87 @@ def test_usage_recommendation_never_claims_publication():
     )
     for rec in (good, high_priv, bad):
         assert "publicatie" not in rec.lower()
+
+
+def test_build_validation_report_structure():
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame(
+        {
+            "geslacht": rng.choice(["1", "2"], 200),
+            "opleiding": rng.choice(["A", "B", "C"], 200),
+            "leeftijd": rng.integers(17, 30, 200),
+        }
+    )
+    report = evaluate(df, df.copy())
+    priv = evaluate_privacy(df, df.copy())
+    sdm = evaluate_sdmetrics(df, df.copy(), _metadata(df))
+    out = build_validation_report(
+        report=report,
+        priv=priv,
+        sdm=sdm,
+        recommendation=usage_recommendation(report, priv),
+        synthesizer="gaussian",
+        n_training_rows=len(df),
+        n_generated_rows=100,
+        sdv_version="1.37.0",
+        generated_at="2026-06-15",
+        random_seed=42,
+        intended_use="Intern onderzoek / analyse",
+    )
+    assert out["sdv_version"] == "1.37.0"
+    assert out["synthesizer"] == "gaussian"
+    assert out["n_training_rows"] == len(df)
+    assert out["random_seed"] == 42
+    assert out["intended_use"] == "Intern onderzoek / analyse"
+    assert len(out["column_stats"]) == len(report.rows)
+    assert out["privacy"]["available"] is True
+    assert out["sdmetrics"]["available"] is True
+    assert out["disclaimer"] == RECOMMENDATION_DISCLAIMER
+
+
+def test_build_validation_report_is_json_serializable():
+    import json
+
+    df = _make_df()
+    report = evaluate(df, df.copy())
+    priv = evaluate_privacy(df, df.copy())
+    sdm = evaluate_sdmetrics(df, df.copy(), _metadata(df))
+    out = build_validation_report(
+        report=report,
+        priv=priv,
+        sdm=sdm,
+        recommendation="x",
+        synthesizer="gaussian",
+        n_training_rows=len(df),
+        n_generated_rows=5,
+        sdv_version="1.37.0",
+        generated_at="2026-06-15",
+    )
+    # mag niet crashen en seed/intended_use zijn None wanneer niet meegegeven
+    text = json.dumps(out)
+    assert '"random_seed": null' in text
+    assert '"intended_use": null' in text
+
+
+def test_build_validation_report_unavailable_privacy():
+    df = pd.DataFrame({"naam": [f"p_{i}" for i in range(30)]})
+    report = evaluate(df, df.copy())
+    priv = evaluate_privacy(df, df.copy())  # geen bruikbare kolommen → unavailable
+    sdm = evaluate_sdmetrics(df, df.copy(), None)  # geen metadata → unavailable
+    out = build_validation_report(
+        report=report,
+        priv=priv,
+        sdm=sdm,
+        recommendation="x",
+        synthesizer="gaussian",
+        n_training_rows=len(df),
+        n_generated_rows=5,
+        sdv_version="1.37.0",
+        generated_at="2026-06-15",
+    )
+    assert out["privacy"]["available"] is False
+    assert "reason" in out["privacy"]
+    assert out["sdmetrics"]["available"] is False
 
 
 def test_recommendation_disclaimer_is_neutral():

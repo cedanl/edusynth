@@ -10,8 +10,10 @@ import yaml
 from ceda_synth.core.validate import (
     RECOMMENDATION_DISCLAIMER,
     PairsReport,
+    PrivacyReport,
     Report,
     SDMetricsReport,
+    build_validation_report,
     evaluate,
     evaluate_pairs,
     evaluate_privacy,
@@ -157,6 +159,10 @@ def render(
             recommendation=recommendation,
             metadata_dict=metadata_dict,
             real_metadata_dict=real_metadata_dict,
+            report=report,
+            priv=priv,
+            sdm=sdm,
+            n_training_rows=len(df),
         )
 
 
@@ -387,7 +393,14 @@ def _render_download(
     recommendation: str,
     metadata_dict: dict | None,
     real_metadata_dict: dict | None,
+    report: Report,
+    priv: PrivacyReport,
+    sdm: SDMetricsReport,
+    n_training_rows: int,
 ) -> None:
+    import json
+    from datetime import date
+
     import sdv as _sdv
 
     sdv_version = _sdv.__version__
@@ -395,6 +408,31 @@ def _render_download(
     csv_bytes = synth.to_csv(index=False).encode("utf-8")
     if st.button("Download synthetische data", use_container_width=True, type="primary"):
         _download_dialog(csv_bytes, verdict, recommendation)
+
+    validation_report = build_validation_report(
+        report=report,
+        priv=priv,
+        sdm=sdm,
+        recommendation=recommendation,
+        synthesizer="par" if modality == "sequential" else "gaussian",
+        n_training_rows=n_training_rows,
+        n_generated_rows=n_generated,
+        sdv_version=sdv_version,
+        generated_at=date.today().isoformat(),
+        random_seed=random_seed,
+        intended_use=st.session_state.get("intended_use"),
+    )
+    st.download_button(
+        "Download validation_report.json",
+        json.dumps(validation_report, indent=2, ensure_ascii=False).encode("utf-8"),
+        file_name="validation_report.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+    st.caption(
+        "Het validatierapport bundelt alle scores en synthese-parameters — bewaar het "
+        "naast de CSV voor latere verantwoording."
+    )
 
     st.divider()
 
@@ -423,8 +461,6 @@ def _render_download(
             language="yaml",
         )
         if real_metadata_dict or metadata_dict:
-            import json
-
             with st.expander("SDV Metadata (JSON)", expanded=False):
                 st.caption(
                     "Download de metadata als JSON om de synthese buiten ceda-synth te "

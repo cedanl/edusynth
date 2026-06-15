@@ -45,6 +45,18 @@ Boven de details toont de app een kort **gebruiksoordeel** (bijv. "Hoge statisti
 !!! note "Operationele vuistregel"
     Het oordeel is een operationele vuistregel op basis van afstandsmetrieken (TV, genormaliseerde Wasserstein), niet ontleend aan een vastgestelde norm. Beoordeel zelf of de kwaliteit volstaat voor het beoogde gebruik.
 
+## Validatierapport exporteren (JSON)
+
+In de tab _Download & Reproductie_ staat naast de CSV een knop **Download validation_report.json**. Dit machine-leesbare rapport bundelt alle scores die anders alleen in de UI zichtbaar zijn, plus de synthese-parameters:
+
+- `generated_at`, `sdv_version`, `synthesizer`, `n_training_rows`, `n_generated_rows`, `random_seed`, `intended_use`
+- `column_stats` — per kolom de afstand, score, metriek en of die binnen de drempel valt
+- `sdmetrics` — overall score, Column Shapes en Column Pair Trends (indien beschikbaar)
+- `privacy` — DCR-ratio, NNDR-mediaan en risiconiveau (indien beschikbaar)
+- `usage_recommendation` en de bijbehorende disclaimer
+
+Zo leg je het volledige oordeel reproduceerbaar vast, ook maanden later.
+
 ## Distributieplots
 
 De app toont naast de scores ook histogrammen en staafdiagrammen van echte vs. synthetische data per kolom — zo zie je direct waar afwijkingen zitten.

@@ -46,7 +46,7 @@ De app toont per kolom:
 
 ### Stap 5 — Exporteren
 
-Download de synthetische data als CSV. De app toont ook het bijbehorende SDV-codeblok om hetzelfde resultaat zelf te reproduceren.
+Download de synthetische data als CSV. Daarnaast kun je het **validatierapport** als `validation_report.json` downloaden: dit bundelt alle scores (per-kolom afstanden, sdmetrics, DCR/NNDR) en de synthese-parameters (synthesizer, aantal trainingsrijen, seed, SDV-versie) zodat het oordeel later reproduceerbaar vastligt. De app toont ook het bijbehorende SDV-codeblok om hetzelfde resultaat zelf te reproduceren.
 
 ## CLI (geavanceerd)
 

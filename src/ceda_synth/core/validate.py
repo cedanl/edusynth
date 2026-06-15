@@ -477,3 +477,67 @@ def usage_recommendation(report: Report, priv: PrivacyReport | None = None) -> s
         "Lage statistische kwaliteit — meerdere kolommen wijken sterk af. "
         "Alleen geschikt voor technische tests."
     )
+
+
+# ── Validatierapport-export ──────────────────────────────────────────────────────
+
+
+def build_validation_report(
+    *,
+    report: Report,
+    priv: PrivacyReport,
+    sdm: SDMetricsReport,
+    recommendation: str,
+    synthesizer: str,
+    n_training_rows: int,
+    n_generated_rows: int,
+    sdv_version: str,
+    generated_at: str,
+    random_seed: int | None = None,
+    intended_use: str | None = None,
+) -> dict:
+    """Stel een machine-leesbaar validatierapport samen voor latere verantwoording.
+
+    Bundelt alle scores die anders alleen in de UI zichtbaar zijn (per-kolom
+    afstanden, sdmetrics, DCR/NNDR) plus de synthese-parameters, zodat een
+    download het hele oordeel reproduceerbaar vastlegt.
+    """
+    privacy = {"available": priv.available}
+    if priv.available:
+        privacy.update(
+            {
+                "dcr_ratio": priv.dcr_ratio,
+                "nndr_median": priv.nndr_median,
+                "risk_level": priv.risk_level,
+                "n_cols": priv.n_cols,
+            }
+        )
+    else:
+        privacy["reason"] = priv.reason
+
+    sdmetrics: dict = {"available": sdm.available}
+    if sdm.available:
+        sdmetrics.update(
+            {
+                "overall_score": sdm.overall_score,
+                "column_shapes": sdm.column_shapes,
+                "column_pair_trends": sdm.column_pair_trends,
+            }
+        )
+    else:
+        sdmetrics["reason"] = sdm.reason
+
+    return {
+        "generated_at": generated_at,
+        "sdv_version": sdv_version,
+        "synthesizer": synthesizer,
+        "n_training_rows": n_training_rows,
+        "n_generated_rows": n_generated_rows,
+        "random_seed": random_seed,
+        "intended_use": intended_use,
+        "column_stats": [dict(row) for row in report.rows],
+        "sdmetrics": sdmetrics,
+        "privacy": privacy,
+        "usage_recommendation": recommendation,
+        "disclaimer": RECOMMENDATION_DISCLAIMER,
+    }
