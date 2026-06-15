@@ -68,23 +68,6 @@ def render_tabular(
         raw_pk = st.selectbox("Primaire sleutel", pk_opts)
         primary_key: str | None = None if raw_pk == "(geen)" else raw_pk
 
-    # ── Longitudinale data waarschuwing ──────────────────────────────────────
-    longitudinal = (
-        st.radio(
-            "Heeft elke entiteit (student/instelling) meerdere rijen over de tijd?",
-            ["Nee", "Ja — longitudinale data"],
-            horizontal=True,
-            key="q_longitudinal",
-        )
-        == "Ja — longitudinale data"
-    )
-    if longitudinal:
-        st.warning(
-            "Longitudinale data: de synthesizer behandelt elke rij als "
-            "onafhankelijk en behoudt temporele samenhang niet. Voor betere resultaten: "
-            "gebruik 'SDV demo-data → Sequentieel' of PAR Synthesizer in SDV direct."
-        )
-
     n_rows = int(
         st.number_input("Aantal rijen", min_value=10, max_value=500_000, value=len(df), step=100)
     )
@@ -95,6 +78,61 @@ def render_tabular(
         n_rows=n_rows,
         seed=seed,
     )
+
+
+def render_upload_sequential(df: pd.DataFrame) -> SequentialConfig | None:
+    """Longitudinale upload-flow: detecteer + bevestig sequence key/index.
+
+    Retourneert een SequentialConfig als de gebruiker (of de auto-detectie)
+    longitudinaal kiest, anders None — dan volgt de gewone tabulaire flow.
+    """
+    from ceda_synth.core.synthesize import infer_sequence_columns
+
+    looks, default_key, default_index = infer_sequence_columns(df)
+    is_longitudinal = (
+        st.radio(
+            "Heeft elke entiteit (student/instelling) meerdere rijen over de tijd?",
+            ["Nee", "Ja — longitudinale data"],
+            index=1 if looks else 0,
+            horizontal=True,
+            key="q_longitudinal",
+        )
+        == "Ja — longitudinale data"
+    )
+    if not is_longitudinal:
+        return None
+
+    cols = list(df.columns)
+    with st.expander("Longitudinale configuratie", expanded=True):
+        st.caption(
+            "Voor longitudinale data gebruikt de app de PAR-synthesizer, die de "
+            "volgorde per entiteit behoudt. Training kan enkele minuten duren."
+        )
+        c1, c2 = st.columns(2)
+        seq_key = c1.selectbox(
+            "Sequence key — ID per entiteit",
+            cols,
+            index=cols.index(default_key) if default_key in cols else 0,
+        )
+        idx_default = default_index if default_index in cols else cols[0]
+        seq_idx = c2.selectbox(
+            "Sequence index — tijdkolom",
+            cols,
+            index=cols.index(idx_default),
+        )
+        if seq_key == seq_idx:
+            st.warning("Kies verschillende kolommen voor sequence key en index.")
+
+    n_sequences = int(
+        st.number_input(
+            "Aantal sequenties (entiteiten)",
+            min_value=1,
+            max_value=100_000,
+            value=min(100, df[seq_key].nunique()),
+        )
+    )
+    seed = _render_seed()
+    return SequentialConfig(n_sequences=n_sequences, seq_key=seq_key, seq_idx=seq_idx, seed=seed)
 
 
 def render_sequential(df: pd.DataFrame, demo_meta: object) -> SequentialConfig:

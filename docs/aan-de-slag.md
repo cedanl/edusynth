@@ -30,6 +30,10 @@ Start de app en sleep een CSV- of Parquet-bestand op het uploadveld. ceda-synth 
 
 Na het uploaden zie je per kolom het gedetecteerde SDV-type (`categorical`, `numerical`, `datetime`, `id`). Pas dit aan als de detectie afwijkt.
 
+#### Longitudinale data
+
+Heeft elke entiteit (student, instelling) meerdere rijen over de tijd — bijvoorbeeld één rij per student per studiejaar — dan herkent de app dat meestal zelf en zet de vraag *"Heeft elke entiteit meerdere rijen over de tijd?"* op **Ja**. De app kiest dan de **PAR-synthesizer**, die de volgorde per entiteit behoudt, en vult de **sequence key** (ID per entiteit) en **sequence index** (tijdkolom) vast in. Controleer die twee en pas ze aan waar nodig. PAR-training is zwaarder dan de standaardsynthesizer en kan enkele minuten duren.
+
 ### Stap 3 — Synthetische data genereren
 
 Kies het aantal gewenste rijen en klik **Genereer**. Het model traint op de achtergrond — bij grotere datasets kan dit enkele seconden duren.
