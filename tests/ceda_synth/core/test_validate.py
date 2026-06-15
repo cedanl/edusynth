@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ceda_synth.core.validate import (
+    RECOMMENDATION_DISCLAIMER,
     PairsReport,
     PrivacyReport,
     Report,
@@ -247,7 +248,30 @@ def test_usage_recommendation_good_data():
     df = _make_df()
     report = evaluate(df, df.copy())
     rec = usage_recommendation(report)
-    assert "rapportage" in rec.lower() or "analyse" in rec.lower()
+    assert "kwaliteit" in rec.lower()
+
+
+def test_usage_recommendation_never_claims_publication():
+    # #21: het automatische oordeel mag geen publicatiegeschiktheid suggereren.
+    df = _make_df()
+    good = usage_recommendation(evaluate(df, df.copy()))
+    high_priv = usage_recommendation(
+        evaluate(df, df.copy()), PrivacyReport(available=True, risk_level="hoog")
+    )
+    rng = np.random.default_rng(8)
+    bad = usage_recommendation(
+        evaluate(
+            pd.DataFrame({"score": rng.normal(100, 10, 200)}),
+            pd.DataFrame({"score": rng.normal(500, 10, 200)}),
+        )
+    )
+    for rec in (good, high_priv, bad):
+        assert "publicatie" not in rec.lower()
+
+
+def test_recommendation_disclaimer_is_neutral():
+    assert "vuistregel" in RECOMMENDATION_DISCLAIMER.lower()
+    assert "peer-reviewed" in RECOMMENDATION_DISCLAIMER.lower()
 
 
 # ── evaluate_pairs ─────────────────────────────────────────────────────────────
