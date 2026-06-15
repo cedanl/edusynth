@@ -360,7 +360,7 @@ _SDMETRICS_MAX_ROWS = 5_000  # cap zodat de report responsive blijft bij grote s
 class SDMetricsReport:
     """sdmetrics QualityReport — column shapes + column pair trends.
 
-    Vult de eigen TV/Wasserstein-snelvalidatie aan met peer-reviewed sdmetrics-
+    Vult de eigen TV/Wasserstein-snelvalidatie aan met aanvullende sdmetrics-
     metrieken. Column Pair Trends dekt categorisch × categorisch
     (ContingencySimilarity) en categorisch × numeriek — verbanden die de
     Pearson-only `evaluate_pairs` mist.
@@ -430,14 +430,13 @@ def evaluate_sdmetrics(
 # ── Gebruiksaanbeveling ────────────────────────────────────────────────────────
 
 # De drempelwaarden hieronder zijn een operationele vuistregel, niet ontleend aan
-# een gepubliceerde standaard. Het oordeel beschrijft daarom statistische kwaliteit
-# en bruikbaarheid in neutrale termen — het doet géén uitspraak over geschiktheid
-# voor publicatie. Die afweging blijft aan de onderzoeker; zie de disclaimer.
+# een vastgestelde norm. Het oordeel beschrijft daarom statistische kwaliteit en
+# bruikbaarheid in neutrale termen — de uiteindelijke afweging blijft aan de
+# gebruiker; zie de disclaimer.
 RECOMMENDATION_DISCLAIMER = (
     "Dit oordeel is een operationele vuistregel op basis van afstandsmetrieken "
-    "(TV, genormaliseerde Wasserstein), geen peer-reviewed validatieoordeel. "
-    "Rapporteer de ruwe metrische waarden in een publicatie en beoordeel zelf of "
-    "de kwaliteit volstaat voor het beoogde gebruik."
+    "(TV, genormaliseerde Wasserstein), geen vastgestelde norm. "
+    "Beoordeel zelf of de kwaliteit volstaat voor het beoogde gebruik."
 )
 
 
@@ -445,7 +444,7 @@ def usage_recommendation(report: Report, priv: PrivacyReport | None = None) -> s
     """Vertaal validatiescores naar een neutrale kwaliteits- en bruikbaarheidsindicatie.
 
     Beschrijft de statistische gelijkenis met de echte data; claimt bewust geen
-    geschiktheid voor publicatie (zie :data:`RECOMMENDATION_DISCLAIMER`).
+    vastgestelde geschiktheid (zie :data:`RECOMMENDATION_DISCLAIMER`).
     """
     priv_risk = priv.risk_level if (priv and priv.available) else "onbekend"
 

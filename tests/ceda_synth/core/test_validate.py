@@ -270,8 +270,13 @@ def test_usage_recommendation_never_claims_publication():
 
 
 def test_recommendation_disclaimer_is_neutral():
-    assert "vuistregel" in RECOMMENDATION_DISCLAIMER.lower()
-    assert "peer-reviewed" in RECOMMENDATION_DISCLAIMER.lower()
+    low = RECOMMENDATION_DISCLAIMER.lower()
+    assert "vuistregel" in low
+    assert "beoordeel zelf" in low
+    # Doelgroep is data-analisten, geen onderzoekers: geen publicatie-/onderzoeksframing.
+    assert "publicatie" not in low
+    assert "onderzoeker" not in low
+    assert "peer-reviewed" not in low
 
 
 # ── evaluate_pairs ─────────────────────────────────────────────────────────────

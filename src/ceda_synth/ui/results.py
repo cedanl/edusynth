@@ -291,7 +291,7 @@ def _render_validation(
 
 
 def _render_sdmetrics(sdm: SDMetricsReport) -> None:
-    """Geavanceerde sdmetrics QualityReport (niveau 3) — citeerbaar voor publicatie."""
+    """Geavanceerde sdmetrics QualityReport (niveau 3) — uitgebreide kwaliteitsmetrieken."""
     with st.expander("Geavanceerde kwaliteitsscore (sdmetrics)", expanded=False):
         if not sdm.available:
             st.info(f"Niet beschikbaar: {sdm.reason}")
@@ -300,7 +300,7 @@ def _render_sdmetrics(sdm: SDMetricsReport) -> None:
         if sdm.overall_score is not None:
             st.metric("Overall quality score", f"{sdm.overall_score:.1%}")
         st.caption(
-            "Peer-reviewed sdmetrics-metrieken — citeerbaar in een publicatie. "
+            "Aanvullende kwaliteitsmetrieken uit sdmetrics. "
             "**Column Shapes** meet de verdeling per kolom (TVComplement / KSComplement); "
             "**Column Pair Trends** meet samenhang tussen kolomparen, inclusief "
             "categorisch × categorisch (ContingencySimilarity)."
