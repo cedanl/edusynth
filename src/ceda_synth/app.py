@@ -6,6 +6,7 @@ import streamlit as st
 from sdv.metadata import SingleTableMetadata
 from sdv.single_table import GaussianCopulaSynthesizer
 
+from ceda_synth.core.synthesize import set_seed
 from ceda_synth.ui import config as cfg_ui
 from ceda_synth.ui import datasource, results
 from ceda_synth.ui.theme import inject_css
@@ -18,6 +19,7 @@ def _run_sequential(src: datasource.DataSource, cfg: cfg_ui.SequentialConfig) ->
 
     with st.spinner("PAR-model trainen…"):
         try:
+            set_seed(cfg.seed)
             model = PARSynthesizer(src.demo_meta, epochs=20, verbose=False)
             model.fit(src.df)
             st.session_state["synth"] = model.sample(num_sequences=cfg.n_sequences)
@@ -25,6 +27,7 @@ def _run_sequential(src: datasource.DataSource, cfg: cfg_ui.SequentialConfig) ->
             st.session_state["n_generated"] = cfg.n_sequences
             st.session_state["col_types"] = None
             st.session_state["primary_key"] = None
+            st.session_state["random_seed"] = cfg.seed
             st.session_state["metadata_dict"] = src.demo_meta.to_dict()
         except Exception as exc:
             st.error(f"Fout bij genereren: {exc}")
@@ -40,6 +43,7 @@ def _run_tabular(src: datasource.DataSource, cfg: cfg_ui.TabularConfig) -> None:
 
     with st.spinner("Model trainen en data genereren…"):
         try:
+            set_seed(cfg.seed)
             model = GaussianCopulaSynthesizer(meta)
             model.fit(src.df)
             st.session_state["synth"] = model.sample(num_rows=cfg.n_rows)
@@ -47,6 +51,7 @@ def _run_tabular(src: datasource.DataSource, cfg: cfg_ui.TabularConfig) -> None:
             st.session_state["n_generated"] = cfg.n_rows
             st.session_state["col_types"] = cfg.col_types
             st.session_state["primary_key"] = cfg.primary_key
+            st.session_state["random_seed"] = cfg.seed
             st.session_state["metadata_dict"] = meta.to_dict()
         except Exception as exc:
             st.error(f"Fout bij genereren: {exc}")
@@ -129,6 +134,7 @@ results.render(
     modality=source.modality,
     demo_name=source.demo_name,
     n_generated=st.session_state["n_generated"],
+    random_seed=st.session_state.get("random_seed"),
     metadata_dict=st.session_state.get("metadata_dict"),
     real_metadata_dict=st.session_state.get("real_metadata_dict"),
 )

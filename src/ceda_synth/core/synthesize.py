@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import random
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import yaml
 from sdv.metadata import SingleTableMetadata
@@ -135,7 +137,22 @@ def _looks_like_date(values: list) -> bool:
 # ── Synthese ───────────────────────────────────────────────────────────────────
 
 
-def fit(data: pd.DataFrame, schema_path: Path | None = None) -> GaussianCopulaSynthesizer:
+def set_seed(seed: int) -> None:
+    """Maak synthese reproduceerbaar door numpy/random te seeden vóór ``fit``.
+
+    SDV 1.17 biedt geen seed-parameter in de constructor; GaussianCopula en PAR
+    gebruiken de globale numpy-randomstate. Een ``np.random.seed()`` vóór ``fit()``
+    levert daarom bij gelijke seed + data identieke synthetische output.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+
+
+def fit(
+    data: pd.DataFrame,
+    schema_path: Path | None = None,
+    seed: int | None = None,
+) -> GaussianCopulaSynthesizer:
     """Train a synthesizer on *data*.
 
     Parameters
@@ -144,6 +161,9 @@ def fit(data: pd.DataFrame, schema_path: Path | None = None) -> GaussianCopulaSy
         Real dataset to learn from.
     schema_path:
         Path to a YAML schema file. If omitted, SDV auto-detects column types.
+    seed:
+        Optional random seed. When set, makes the generated output reproducible
+        for identical input data.
 
     Returns
     -------
@@ -156,6 +176,8 @@ def fit(data: pd.DataFrame, schema_path: Path | None = None) -> GaussianCopulaSy
         metadata = SingleTableMetadata()
         metadata.detect_from_dataframe(data)
 
+    if seed is not None:
+        set_seed(seed)
     synthesizer = GaussianCopulaSynthesizer(metadata)
     synthesizer.fit(data)
     return synthesizer

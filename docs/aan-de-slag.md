@@ -34,6 +34,8 @@ Na het uploaden zie je per kolom het gedetecteerde SDV-type (`categorical`, `num
 
 Kies het aantal gewenste rijen en klik **Genereer**. Het model traint op de achtergrond — bij grotere datasets kan dit enkele seconden duren.
 
+Onder **Geavanceerd — reproduceerbaarheid** stel je een **random seed** in (standaard `42`). Dezelfde seed met dezelfde data levert identieke synthetische output, zodat een collega of reviewer jouw resultaat exact kan reproduceren. De seed komt terug in de geëxporteerde parameters en in het gegenereerde Python-codeblok.
+
 ### Stap 4 — Validatierapport bekijken
 
 De app toont per kolom:
@@ -51,6 +53,6 @@ Download de synthetische data als CSV. De app toont ook het bijbehorende SDV-cod
 Voor batchverwerking is er ook een CLI:
 
 ```bash
-ceda-synth synthesize data.csv output.csv --rows 1000
+ceda-synth synthesize data.csv output.csv --rows 1000 --seed 42
 ceda-synth validate data.csv output.csv
 ```

@@ -42,6 +42,16 @@ ceda-synth synthesize data.csv output.csv --schema schema.yaml --rows 1000
 
 Zonder `--schema` detecteert de CLI kolomtypes automatisch, net als de app.
 
+### Reproduceerbaarheid (`--seed`)
+
+Geef `--seed <getal>` mee om reproduceerbare output te krijgen: dezelfde seed met dezelfde inputdata levert een identieke synthetische dataset.
+
+```bash
+ceda-synth synthesize data.csv output.csv --seed 42
+```
+
+Zonder `--seed` is elke run anders. In de app staat dezelfde optie onder **Geavanceerd — reproduceerbaarheid**.
+
 ## Bekende schema's
 
 Voorgeconfigureerde schema's voor CEDA-datasets (1CHO, CROHO) staan in `schemas/` zodra ze beschikbaar zijn.
