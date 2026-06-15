@@ -34,7 +34,7 @@ De TV- en Wasserstein-scores zijn een snelle vuistregel. Voor een **uitgebreider
 - **Column Shapes** — verdeling per kolom (TVComplement voor categorisch, KSComplement voor numeriek).
 - **Column Pair Trends** — samenhang tussen kolomparen, inclusief **categorisch × categorisch** (ContingencySimilarity) en categorisch × numeriek. Dit dekt verbanden die de eenvoudige Pearson-correlatie mist.
 
-Kolomparen met een zwakke samenhang in de echte data (onder de sdmetrics-associatiedrempel) krijgen score *NaN* en blijven buiten beschouwing — dat is geen fout, alleen een teken dat er weinig verband te bewaren viel. Bij grote datasets (> 5000 rijen) rekent de app op een steekproef zodat het rapport responsief blijft.
+Kolomparen met een zwakke samenhang in de echte data (onder de sdmetrics-associatiedrempel) krijgen score *NaN* en blijven buiten beschouwing. Dat is geen fout: er is dan weinig verband om te bewaren. Bij meer dan 5000 rijen rekent de app op een steekproef.
 
 Deze score komt uit een breed gebruikte, gestandaardiseerde methode (sdmetrics).
 
@@ -44,6 +44,18 @@ Boven de details toont de app een kort **gebruiksoordeel** (bijv. "Hoge statisti
 
 !!! note "Operationele vuistregel"
     Het oordeel is een operationele vuistregel op basis van afstandsmetrieken (TV, genormaliseerde Wasserstein), niet ontleend aan een vastgestelde norm. Beoordeel zelf of de kwaliteit volstaat voor het beoogde gebruik.
+
+## Validatierapport exporteren (JSON)
+
+In de tab _Download & Reproductie_ staat naast de CSV een knop **Download validation_report.json**. Dit machine-leesbare rapport bundelt alle scores die anders alleen in de UI zichtbaar zijn, plus de synthese-parameters:
+
+- `generated_at`, `sdv_version`, `synthesizer`, `n_training_rows`, `n_generated_rows`, `random_seed`, `intended_use`
+- `column_stats` — per kolom de afstand, score, metriek en of die binnen de drempel valt
+- `sdmetrics` — overall score, Column Shapes en Column Pair Trends (indien beschikbaar)
+- `privacy` — DCR-ratio, NNDR-mediaan en risiconiveau (indien beschikbaar)
+- `usage_recommendation` en de bijbehorende disclaimer
+
+Zo leg je het volledige oordeel reproduceerbaar vast.
 
 ## Distributieplots
 

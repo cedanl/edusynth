@@ -34,7 +34,7 @@ Na het uploaden zie je per kolom het gedetecteerde SDV-type (`categorical`, `num
 
 Kies het aantal gewenste rijen en klik **Genereer**. Het model traint op de achtergrond — bij grotere datasets kan dit enkele seconden duren.
 
-Onder **Geavanceerd — reproduceerbaarheid** stel je een **random seed** in (standaard `42`). Dezelfde seed met dezelfde data levert identieke synthetische output, zodat een collega of reviewer jouw resultaat exact kan reproduceren. De seed komt terug in de geëxporteerde parameters en in het gegenereerde Python-codeblok.
+Onder **Geavanceerd — reproduceerbaarheid** stel je een **random seed** in (standaard `42`). Dezelfde seed met dezelfde data levert identieke synthetische output. De seed komt terug in de geëxporteerde parameters en in het gegenereerde Python-codeblok.
 
 ### Stap 4 — Validatierapport bekijken
 
@@ -46,7 +46,7 @@ De app toont per kolom:
 
 ### Stap 5 — Exporteren
 
-Download de synthetische data als CSV. De app toont ook het bijbehorende SDV-codeblok om hetzelfde resultaat zelf te reproduceren.
+Download de synthetische data als CSV. Daarnaast kun je het **validatierapport** als `validation_report.json` downloaden: dit bevat alle scores (per-kolom afstanden, sdmetrics, DCR/NNDR) en de synthese-parameters (synthesizer, aantal trainingsrijen, seed, SDV-versie). De app toont ook het bijbehorende SDV-codeblok om hetzelfde resultaat zelf te reproduceren.
 
 ## CLI (geavanceerd)
 
