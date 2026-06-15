@@ -31,6 +31,9 @@ columns:
     dtype: integer
     min: 2015
     max: 2024
+  inschrijfdatum:
+    dtype: date
+    datetime_format: "%Y%m%d"
   geslacht:
     dtype: categorical
     categories: ["1", "2"]
@@ -41,6 +44,14 @@ ceda-synth synthesize data.csv output.csv --schema schema.yaml --rows 1000
 ```
 
 Zonder `--schema` detecteert de CLI kolomtypes automatisch, net als de app.
+
+### Datumkolommen (`datetime_format`)
+
+Geef bij een `date`-kolom het formaat mee in [strftime](https://strftime.org/)-notatie. Zonder `datetime_format` gaat SDV uit van ISO 8601 (`YYYY-MM-DD`) en mislukt het parsen van DUO-datums (`YYYYMMDD`). Veelgebruikte waarden: `"%Y%m%d"` (20190101), `"%Y-%m-%d"` (2019-01-01), `"%d-%m-%Y"` (01-01-2019). De app herkent het patroon en toont het in de kolomtype-hints.
+
+### Bereik (`min` / `max`)
+
+Met `min` en `max` leg je het domein van een numerieke kolom vast. Waarden die SDV daarbuiten genereert worden na het samplen naar de grens geklemd — zo komen er geen negatieve aantallen of jaren buiten bereik uit.
 
 ### Reproduceerbaarheid (`--seed`)
 

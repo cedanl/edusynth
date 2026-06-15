@@ -22,11 +22,16 @@ _DTYPE_TO_SDTYPE: dict[str, str] = {
     "date": "datetime",
 }
 
-_DATE_PATTERNS = [
-    re.compile(r"^\d{8}$"),  # YYYYMMDD
-    re.compile(r"^\d{4}-\d{2}-\d{2}$"),  # YYYY-MM-DD
-    re.compile(r"^\d{2}-\d{2}-\d{4}$"),  # DD-MM-YYYY
+# Patroon → strftime-formaat, zodat een herkende datumkolom het juiste
+# datetime_format meekrijgt richting SDV (Nederlandse onderwijsdata gebruikt vaak
+# YYYYMMDD, het DUO-formaat).
+_DATE_FORMATS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"^\d{8}$"), "%Y%m%d"),  # YYYYMMDD
+    (re.compile(r"^\d{4}-\d{2}-\d{2}$"), "%Y-%m-%d"),  # YYYY-MM-DD
+    (re.compile(r"^\d{2}-\d{2}-\d{4}$"), "%d-%m-%Y"),  # DD-MM-YYYY
 ]
+_DATE_PATTERNS = [pattern for pattern, _ in _DATE_FORMATS]
+_DEFAULT_DATETIME_FORMAT = "%Y-%m-%d"
 
 
 # ── Kolomtype-hints ────────────────────────────────────────────────────────────
@@ -100,13 +105,14 @@ def infer_column_hints(df: pd.DataFrame) -> list[ColumnHint]:
 
         if detected in ("categorical", "id") and pd.api.types.is_object_dtype(series):
             sample = series.head(20).tolist()
-            if _looks_like_date(sample):
+            fmt = _detect_date_format(sample)
+            if fmt is not None:
                 hints.append(
                     ColumnHint(
                         name=col,
                         detected_sdtype=detected,
                         suggested_sdtype="datetime",
-                        reason="Patroon lijkt op een datum (JJJJMMDD, JJJJ-MM-DD, …)",
+                        reason=f"Patroon lijkt op een datum (formaat {fmt})",
                         confidence=0.8,
                     )
                 )
@@ -126,12 +132,20 @@ def infer_column_hints(df: pd.DataFrame) -> list[ColumnHint]:
     return hints
 
 
-def _looks_like_date(values: list) -> bool:
+def _detect_date_format(values: list) -> str | None:
+    """Geef het strftime-formaat als ≥70% van de stringsample één patroon volgt."""
     sample = [v for v in values[:10] if isinstance(v, str)]
     if len(sample) < 3:
-        return False
-    matches = sum(1 for v in sample if any(p.match(v.strip()) for p in _DATE_PATTERNS))
-    return matches >= len(sample) * 0.7
+        return None
+    for pattern, fmt in _DATE_FORMATS:
+        matches = sum(1 for v in sample if pattern.match(v.strip()))
+        if matches >= len(sample) * 0.7:
+            return fmt
+    return None
+
+
+def _looks_like_date(values: list) -> bool:
+    return _detect_date_format(values) is not None
 
 
 # ── Synthese ───────────────────────────────────────────────────────────────────
@@ -204,5 +218,29 @@ def _build_metadata(schema: dict) -> SingleTableMetadata:
             metadata.add_column(col_name, sdtype="id")
             metadata.set_primary_key(col_name)
             continue
+        if sdtype == "datetime":
+            # Zonder expliciet formaat valt SDV terug op ISO 8601 en faalt op
+            # DUO-datums (YYYYMMDD). Schema mag het formaat overschrijven.
+            kwargs["datetime_format"] = col.get("datetime_format", _DEFAULT_DATETIME_FORMAT)
         metadata.add_column(col_name, **kwargs)
     return metadata
+
+
+def apply_schema_bounds(df: pd.DataFrame, schema_path: Path | None) -> pd.DataFrame:
+    """Dwing de min/max uit het schema af op numerieke kolommen (domeinhandhaving).
+
+    SDV 1.37 kent geen scalar-range-constraint meer (de oude ``ScalarRange`` werkt
+    niet met ``add_constraints``), dus klemmen we waarden buiten het schemadomein na
+    het samplen — zo komen er geen negatieve EC-scores of jaren buiten bereik uit.
+    """
+    if schema_path is None:
+        return df
+    schema = _load_schema(schema_path)
+    result = df.copy()
+    for col_name, col in schema.get("columns", {}).items():
+        low, high = col.get("min"), col.get("max")
+        if col_name not in result.columns or (low is None and high is None):
+            continue
+        if pd.api.types.is_numeric_dtype(result[col_name]):
+            result[col_name] = result[col_name].clip(lower=low, upper=high)
+    return result

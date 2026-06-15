@@ -8,7 +8,9 @@ import pandas as pd
 from ceda_synth.core.synthesize import (
     ColumnHint,
     _build_metadata,
+    _detect_date_format,
     _load_schema,
+    apply_schema_bounds,
     fit,
     infer_column_hints,
     sample,
@@ -32,6 +34,61 @@ def test_build_metadata_sets_primary_key():
 def test_fit_schema_path_is_optional():
     sig = inspect.signature(fit)
     assert sig.parameters["schema_path"].default is None
+
+
+# ── datetime_format ──────────────────────────────────────────────────────────────
+
+
+def test_build_metadata_sets_datetime_format():
+    schema = {
+        "columns": {
+            "inschrijfdatum": {"dtype": "date", "datetime_format": "%Y%m%d"},
+        }
+    }
+    metadata = _build_metadata(schema)
+    col = metadata.columns["inschrijfdatum"]
+    assert col["sdtype"] == "datetime"
+    assert col["datetime_format"] == "%Y%m%d"
+
+
+def test_build_metadata_datetime_format_defaults():
+    schema = {"columns": {"d": {"dtype": "date"}}}
+    metadata = _build_metadata(schema)
+    assert metadata.columns["d"]["datetime_format"] == "%Y-%m-%d"
+
+
+def test_detect_date_format_duo_yyyymmdd():
+    assert _detect_date_format(["20190101", "20200315", "20211231"]) == "%Y%m%d"
+
+
+def test_detect_date_format_iso():
+    assert _detect_date_format(["2019-01-01", "2020-03-15", "2021-12-31"]) == "%Y-%m-%d"
+
+
+def test_detect_date_format_none_for_non_dates():
+    assert _detect_date_format(["hbo", "wo", "mbo"]) is None
+
+
+# ── schema min/max bounds ────────────────────────────────────────────────────────
+
+
+def test_apply_schema_bounds_clips_numeric():
+    df = pd.DataFrame({"inschrijvingsjaar": [1990, 2019, 2050]})
+    out = apply_schema_bounds(df, FIXTURE_SCHEMA)  # schema: min 2015, max 2023
+    assert out["inschrijvingsjaar"].min() == 2015
+    assert out["inschrijvingsjaar"].max() == 2023
+
+
+def test_apply_schema_bounds_no_schema_is_noop():
+    df = pd.DataFrame({"x": [1, 2, 3]})
+    out = apply_schema_bounds(df, None)
+    pd.testing.assert_frame_equal(out, df)
+
+
+def test_apply_schema_bounds_ignores_missing_columns():
+    df = pd.DataFrame({"andere_kolom": [1, 2, 3]})
+    out = apply_schema_bounds(df, FIXTURE_SCHEMA)
+    pd.testing.assert_frame_equal(out, df)
 
 
 def test_fit_seed_is_optional():

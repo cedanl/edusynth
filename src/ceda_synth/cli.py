@@ -86,12 +86,12 @@ def _cmd_app() -> None:
 
 
 def _cmd_synthesize(args: argparse.Namespace) -> None:
-    from ceda_synth.core.synthesize import fit, sample
+    from ceda_synth.core.synthesize import apply_schema_bounds, fit, sample
 
     data = _read(args.input)
     n_rows = args.rows if args.rows is not None else len(data)
     model = fit(data, args.schema, seed=args.seed)
-    result = sample(model, n_rows)
+    result = apply_schema_bounds(sample(model, n_rows), args.schema)
     _write(result, args.output)
 
     from rich.console import Console
