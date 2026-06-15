@@ -43,7 +43,7 @@ Deze score is gebaseerd op een peer-reviewed methode en kan in een publicatie ge
 Boven de details toont de app een kort **gebruiksoordeel** (bijv. "Hoge statistische kwaliteit") met een bruikbaarheidsindicatie. Dit oordeel is bewust geformuleerd in termen van statistische kwaliteit en bruikbaarheid — het claimt **geen** geschiktheid voor publicatie.
 
 !!! note "Operationele vuistregel"
-    Het oordeel is een operationele vuistregel op basis van afstandsmetrieken (TV, genormaliseerde Wasserstein), niet ontleend aan een gepubliceerde standaard en dus geen peer-reviewed validatieoordeel. Rapporteer in een publicatie de ruwe metrische waarden en beoordeel zelf of de kwaliteit volstaat voor het beoogde gebruik.
+    Het oordeel is een operationele vuistregel op basis van afstandsmetrieken (TV, genormaliseerde Wasserstein), niet ontleend aan een gepubliceerde standaard en dus geen peer-reviewed validatieoordeel. Beoordeel zelf of de kwaliteit volstaat voor het beoogde gebruik.
 
 ## Distributieplots
 
