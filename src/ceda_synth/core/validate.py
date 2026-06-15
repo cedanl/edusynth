@@ -360,7 +360,7 @@ _SDMETRICS_MAX_ROWS = 5_000  # cap zodat de report responsive blijft bij grote s
 class SDMetricsReport:
     """sdmetrics QualityReport — column shapes + column pair trends.
 
-    Vult de eigen TV/Wasserstein-snelvalidatie aan met peer-reviewed sdmetrics-
+    Vult de eigen TV/Wasserstein-snelvalidatie aan met aanvullende sdmetrics-
     metrieken. Column Pair Trends dekt categorisch × categorisch
     (ContingencySimilarity) en categorisch × numeriek — verbanden die de
     Pearson-only `evaluate_pairs` mist.
@@ -429,14 +429,28 @@ def evaluate_sdmetrics(
 
 # ── Gebruiksaanbeveling ────────────────────────────────────────────────────────
 
+# De drempelwaarden hieronder zijn een operationele vuistregel, niet ontleend aan
+# een vastgestelde norm. Het oordeel beschrijft daarom statistische kwaliteit en
+# bruikbaarheid in neutrale termen — de uiteindelijke afweging blijft aan de
+# gebruiker; zie de disclaimer.
+RECOMMENDATION_DISCLAIMER = (
+    "Dit oordeel is een operationele vuistregel op basis van afstandsmetrieken "
+    "(TV, genormaliseerde Wasserstein), geen vastgestelde norm. "
+    "Beoordeel zelf of de kwaliteit volstaat voor het beoogde gebruik."
+)
+
 
 def usage_recommendation(report: Report, priv: PrivacyReport | None = None) -> str:
-    """Vertaal validatiescores naar een concrete gebruiksaanbeveling."""
+    """Vertaal validatiescores naar een neutrale kwaliteits- en bruikbaarheidsindicatie.
+
+    Beschrijft de statistische gelijkenis met de echte data; claimt bewust geen
+    vastgestelde geschiktheid (zie :data:`RECOMMENDATION_DISCLAIMER`).
+    """
     priv_risk = priv.risk_level if (priv and priv.available) else "onbekend"
 
     if priv_risk == "hoog":
         return (
-            "Niet aanbevolen voor publicatie — hoog privacyrisico. "
+            "Niet aanbevolen — hoog privacyrisico. "
             "Pas de syntheseinstellingen aan of raadpleeg uw FG."
         )
 
@@ -448,18 +462,18 @@ def usage_recommendation(report: Report, priv: PrivacyReport | None = None) -> s
     n_failed = sum(1 for r in scored if not r.get("ok", True))
 
     if max_score < 0.1 and n_failed == 0:
-        return "Geschikt voor rapportages, kruistabellen en publicatie."
+        return "Hoge statistische kwaliteit — alle kolomverdelingen liggen dicht bij de echte data."
     if n_failed == 0:
         return (
-            "Geschikt voor exploratieve analyse en trendgrafieken — "
-            "controleer absolute frequenties vóór publicatie."
+            "Goede statistische kwaliteit — verdelingen volgen de echte data met "
+            "kleine afwijkingen. Controleer absolute frequenties vóór extern gebruik."
         )
     if n_failed <= max(1, len(scored) // 3):
         return (
-            "Geschikt voor patroonverkenning en interne tests — "
-            "niet aanbevolen voor publicatie van statistieken."
+            "Matige statistische kwaliteit — enkele kolommen wijken merkbaar af. "
+            "Bruikbaar voor patroonverkenning en interne tests."
         )
     return (
-        "Alleen geschikt voor technische tests — "
-        "verdeling wijkt te sterk af voor inhoudelijke analyse."
+        "Lage statistische kwaliteit — meerdere kolommen wijken sterk af. "
+        "Alleen geschikt voor technische tests."
     )

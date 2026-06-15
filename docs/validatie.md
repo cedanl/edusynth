@@ -28,7 +28,7 @@ Het rapport toont de score als primaire waarde en de ruwe Wasserstein-afstand er
 
 ## Geavanceerde kwaliteitsscore (sdmetrics)
 
-De TV- en Wasserstein-scores zijn een snelle vuistregel. Voor een **citeerbaar** oordeel toont de app onder _Geavanceerde kwaliteitsscore (sdmetrics)_ ook de officiële [sdmetrics](https://docs.sdv.dev/sdmetrics) `QualityReport`:
+De TV- en Wasserstein-scores zijn een snelle vuistregel. Voor een **uitgebreider** oordeel toont de app onder _Geavanceerde kwaliteitsscore (sdmetrics)_ ook de officiële [sdmetrics](https://docs.sdv.dev/sdmetrics) `QualityReport`:
 
 - **Overall quality score** — één samenvattende score `[0, 1]`, hoger is beter.
 - **Column Shapes** — verdeling per kolom (TVComplement voor categorisch, KSComplement voor numeriek).
@@ -36,7 +36,14 @@ De TV- en Wasserstein-scores zijn een snelle vuistregel. Voor een **citeerbaar**
 
 Kolomparen met een zwakke samenhang in de echte data (onder de sdmetrics-associatiedrempel) krijgen score *NaN* en blijven buiten beschouwing — dat is geen fout, alleen een teken dat er weinig verband te bewaren viel. Bij grote datasets (> 5000 rijen) rekent de app op een steekproef zodat het rapport responsief blijft.
 
-Deze score is gebaseerd op een peer-reviewed methode en kan in een publicatie geciteerd worden.
+Deze score komt uit een breed gebruikte, gestandaardiseerde methode (sdmetrics).
+
+## Gebruiksoordeel — een vuistregel, geen norm
+
+Boven de details toont de app een kort **gebruiksoordeel** (bijv. "Hoge statistische kwaliteit") met een bruikbaarheidsindicatie. Dit oordeel is bewust geformuleerd in termen van statistische kwaliteit en bruikbaarheid.
+
+!!! note "Operationele vuistregel"
+    Het oordeel is een operationele vuistregel op basis van afstandsmetrieken (TV, genormaliseerde Wasserstein), niet ontleend aan een vastgestelde norm. Beoordeel zelf of de kwaliteit volstaat voor het beoogde gebruik.
 
 ## Distributieplots
 

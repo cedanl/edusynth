@@ -8,6 +8,7 @@ import streamlit as st
 import yaml
 
 from ceda_synth.core.validate import (
+    RECOMMENDATION_DISCLAIMER,
     PairsReport,
     Report,
     SDMetricsReport,
@@ -54,7 +55,7 @@ def _bruikbaarheid_verdict(verd_risk: str, priv_risk: str) -> tuple[str, str]:
         return "Niet aanbevolen", "hoog"
     if "matig" in risks or "onbekend" in risks:
         return "Bruikbaar met voorbehoud", "matig"
-    return "Aanbevolen voor rapportages", "laag"
+    return "Hoge bruikbaarheid", "laag"
 
 
 def _scorecard(col, label: str, verdict: str, risk: str) -> None:
@@ -78,6 +79,7 @@ def _download_dialog(csv_bytes: bytes, verdict: dict, recommendation: str) -> No
     _scorecard(c2, "Privacy", verdict["priv_label"], verdict["priv_risk"])
     _scorecard(c3, "Bruikbaarheid", verdict["brk_label"], verdict["brk_risk"])
     st.caption(recommendation)
+    st.caption(f"ℹ️ {RECOMMENDATION_DISCLAIMER}")
     st.divider()
 
     gebruik = st.selectbox("Beoogd gebruik van deze dataset", _GEBRUIK_OPTIES)
@@ -176,20 +178,22 @@ def _render_validation(
     brk_risk = verdict["brk_risk"]
     _VERDICT_TEXT = {
         "laag": (
-            "Deze synthetische dataset is **geschikt voor gebruik in rapportages en analyses**."
+            "Deze synthetische dataset vertoont een **hoge statistische gelijkenis** "
+            "met de echte data."
         ),
         "matig": (
             "Deze synthetische dataset is **bruikbaar met voorbehoud**. "
             "Controleer de details hieronder voor gebruik."
         ),
         "hoog": (
-            "Deze synthetische dataset is **niet aanbevolen voor publicatie**. "
+            "Deze synthetische dataset wijkt **sterk af van de echte data**. "
             "Bekijk de details en pas de syntheseinstellingen aan."
         ),
     }
     msg_fn = _RISK_MSG.get(brk_risk, st.info)
     msg_fn(_VERDICT_TEXT.get(brk_risk, ""))
     st.caption(f"**Gebruik:** {recommendation}")
+    st.caption(f"ℹ️ {RECOMMENDATION_DISCLAIMER}")
 
     st.divider()
 
@@ -287,7 +291,7 @@ def _render_validation(
 
 
 def _render_sdmetrics(sdm: SDMetricsReport) -> None:
-    """Geavanceerde sdmetrics QualityReport (niveau 3) — citeerbaar voor publicatie."""
+    """Geavanceerde sdmetrics QualityReport (niveau 3) — uitgebreide kwaliteitsmetrieken."""
     with st.expander("Geavanceerde kwaliteitsscore (sdmetrics)", expanded=False):
         if not sdm.available:
             st.info(f"Niet beschikbaar: {sdm.reason}")
@@ -296,7 +300,7 @@ def _render_sdmetrics(sdm: SDMetricsReport) -> None:
         if sdm.overall_score is not None:
             st.metric("Overall quality score", f"{sdm.overall_score:.1%}")
         st.caption(
-            "Peer-reviewed sdmetrics-metrieken — citeerbaar in een publicatie. "
+            "Aanvullende kwaliteitsmetrieken uit sdmetrics. "
             "**Column Shapes** meet de verdeling per kolom (TVComplement / KSComplement); "
             "**Column Pair Trends** meet samenhang tussen kolomparen, inclusief "
             "categorisch × categorisch (ContingencySimilarity)."
