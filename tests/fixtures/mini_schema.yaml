@@ -12,6 +12,11 @@ columns:
     min: 2015
     max: 2023
 
+  uitschrijvingsjaar:
+    dtype: integer
+    min: 2015
+    max: 2030
+
   instellingscode:
     dtype: categorical
     categories: ["21PB", "21RI", "21PE"]
@@ -31,3 +36,11 @@ columns:
     dtype: categorical
     categories: ["hbo", "wo"]
     probabilities: [0.57, 0.43]
+
+constraints:
+  - type: inequality
+    low: inschrijvingsjaar
+    high: uitschrijvingsjaar
+    strict: false
+  - type: fixed_combinations
+    columns: [instellingscode, opleidingscode]

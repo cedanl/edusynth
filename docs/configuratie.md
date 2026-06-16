@@ -43,6 +43,27 @@ ceda-synth synthesize data.csv output.csv --schema schema.yaml --rows 1000
 
 Zonder `--schema` detecteert de CLI kolomtypes automatisch, net als de app.
 
+### Cross-kolom constraints
+
+SDV bewaakt per kolom al de range en het type, maar leidt geen logische verbanden _tussen_ kolommen af. Via een optioneel `constraints`-blok in het schema dwing je die af tijdens de synthese (geen correctie achteraf). Beschikbaar in de CLI/batch; een schema-loze variant in de app volgt nog.
+
+```yaml
+constraints:
+  - type: inequality          # low ≤ high
+    low: inschrijvingsjaar
+    high: uitschrijvingsjaar
+    strict: false             # optioneel; false = gelijk mag (standaard), true = strikt <
+  - type: fixed_combinations  # alleen combinaties die in de data voorkomen
+    columns: [instellingscode, opleidingscode]
+```
+
+| Type | Wat het afdwingt | Verplichte sleutels |
+|---|---|---|
+| `inequality` | `low ≤ high` (of strikt `<` met `strict: true`) | `low`, `high` |
+| `fixed_combinations` | Alleen in de data voorkomende combinaties van de kolommen | `columns` |
+
+Botsen de regels met de data of bestaat een kolom niet, dan stopt de synthese met een duidelijke melding.
+
 ### Datumkolommen (`datetime_format`)
 
 Geef bij een `date`-kolom het formaat mee in [strftime](https://strftime.org/)-notatie. Zonder `datetime_format` gaat SDV uit van ISO 8601 (`YYYY-MM-DD`) en mislukt het parsen van DUO-datums (`YYYYMMDD`). Veelgebruikte waarden: `"%Y%m%d"` (20190101), `"%Y-%m-%d"` (2019-01-01), `"%d-%m-%Y"` (01-01-2019).
@@ -53,7 +74,7 @@ In de **app** is een schema niet nodig: zodra je een kolom op `Datum` zet, detec
 
 SDV houdt numerieke waarden automatisch binnen de range van je trainingsdata en respecteert gehele getallen (geen `1,2` aanmeldingen) — dit staat standaard aan. Categorische kolommen kunnen per definitie geen waarde buiten de bestaande categorieën krijgen.
 
-Hardere regels die SDV niet uit de data afleidt — een vast domein strakker dan de data, of cross-kolom-logica zoals `inschrijfjaar ≤ uitschrijfjaar` — staan op de roadmap.
+Cross-kolom-logica zoals `inschrijvingsjaar ≤ uitschrijvingsjaar` of geldige categorie-combinaties dwing je af via [cross-kolom constraints](#cross-kolom-constraints) in het schema (CLI/batch). Een vast domein strakker dan de data staat nog op de roadmap.
 
 ### Reproduceerbaarheid (`--seed`)
 
