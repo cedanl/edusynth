@@ -1,8 +1,8 @@
-# Claude Configuration — ceda-synth
+# Claude Configuration — edu-synth
 
 ## Project Overview
 
-ceda-synth is een open-source CEDA/Npuls Streamlit-applicatie die [SDV (Synthetic Data Vault)](https://github.com/sdv-dev/SDV) toegankelijk maakt voor data-analisten bij Nederlandse hogeronderwijsinstellingen. Gebruikers uploaden een dataset, genereren een synthetische versie en bekijken statistische validatierapporten — zonder SDV zelf te hoeven configureren.
+edu-synth is een open-source CEDA/Npuls Streamlit-applicatie die [SDV (Synthetic Data Vault)](https://github.com/sdv-dev/SDV) toegankelijk maakt voor data-analisten bij Nederlandse hogeronderwijsinstellingen. Gebruikers uploaden een dataset, genereren een synthetische versie en bekijken statistische validatierapporten — zonder SDV zelf te hoeven configureren.
 
 **Kernfunctionaliteit:**
 - Databestand uploaden (CSV/Parquet) via de Streamlit-app
@@ -28,7 +28,7 @@ ceda-synth is een open-source CEDA/Npuls Streamlit-applicatie die [SDV (Syntheti
 ## Architectuurprincipes
 
 ### App is de primaire interface, CLI is een dun laagje
-De app (`app.py`) is het hoofdproduct. `cli.py` biedt `ceda-synth app` (lanceert Streamlit) en batchcommando's (`synthesize`, `validate`). Logica leeft in `synthesize.py` en `validate.py` — nooit in `cli.py` of `app.py`.
+De app (`app.py`) is het hoofdproduct. `cli.py` biedt `edu-synth app` (lanceert Streamlit) en batchcommando's (`synthesize`, `validate`). Logica leeft in `synthesize.py` en `validate.py` — nooit in `cli.py` of `app.py`.
 
 ### Schema is optioneel
 SDV detecteert kolomtypes automatisch via `detect_from_dataframe`. Een YAML-schema is alleen nodig voor batchverwerking via de CLI wanneer auto-detectie niet volstaat.
@@ -59,7 +59,7 @@ Geen registries, factories of ABCs totdat er een tweede synthesizer-type is.
 ## Project Structure
 
 ```
-src/ceda_synth/
+src/edu_synth/
 ├── __init__.py       # publieke API: fit, sample, evaluate
 ├── app.py            # Streamlit-app — primaire interface
 ├── cli.py            # dun — app-launcher + batchcommando's
@@ -68,7 +68,7 @@ src/ceda_synth/
 
 tests/
 ├── fixtures/         # kleine hand-crafted CSV/YAML, WEL in git
-└── ceda_synth/       # spiegelt src/ceda_synth/ exact
+└── edu_synth/       # spiegelt src/edu_synth/ exact
     ├── test_cli.py
     ├── test_synthesize.py
     └── test_validate.py
@@ -85,11 +85,11 @@ scripts/              # hulpscripts (download_datasets.py)
 uv sync --all-extras
 
 # App starten
-uv run ceda-synth app
+uv run edu-synth app
 
 # CLI (batch)
-uv run ceda-synth synthesize data.csv output.csv --rows 1000
-uv run ceda-synth validate data.csv output.csv
+uv run edu-synth synthesize data.csv output.csv --rows 1000
+uv run edu-synth validate data.csv output.csv
 
 # Tests
 uv run pytest

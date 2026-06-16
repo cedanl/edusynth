@@ -1,4 +1,4 @@
-"""CLI voor ceda-synth — dun laagje over de Python API."""
+"""CLI voor edu-synth — dun laagje over de Python API."""
 
 from __future__ import annotations
 
@@ -14,15 +14,15 @@ if TYPE_CHECKING:
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="ceda-synth",
+        prog="edu-synth",
         description="Synthetische data genereren voor Nederlandse onderwijsdatasets.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    # ceda-synth app
+    # edu-synth app
     sub.add_parser("app", help="Start de Streamlit-app in de browser.")
 
-    # ceda-synth synthesize
+    # edu-synth synthesize
     p_synth = sub.add_parser("synthesize", help="Genereer synthetische data (batchmodus).")
     p_synth.add_argument("input", type=Path, help="Pad naar het inputbestand (CSV of Parquet).")
     p_synth.add_argument("output", type=Path, help="Pad voor het outputbestand (CSV of Parquet).")
@@ -40,7 +40,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Random seed voor reproduceerbare output (zelfde seed + data → identiek).",
     )
 
-    # ceda-synth validate
+    # edu-synth validate
     p_val = sub.add_parser("validate", help="Vergelijk echte en synthetische data.")
     p_val.add_argument("real", type=Path, help="Pad naar het echte databestand.")
     p_val.add_argument("synthetic", type=Path, help="Pad naar het synthetische databestand.")
@@ -86,7 +86,7 @@ def _cmd_app() -> None:
 
 
 def _cmd_synthesize(args: argparse.Namespace) -> None:
-    from ceda_synth.core.synthesize import fit, sample
+    from edu_synth.core.synthesize import fit, sample
 
     data = _read(args.input)
     n_rows = args.rows if args.rows is not None else len(data)
@@ -100,7 +100,7 @@ def _cmd_synthesize(args: argparse.Namespace) -> None:
 
 
 def _cmd_validate(args: argparse.Namespace) -> None:
-    from ceda_synth.core.validate import evaluate
+    from edu_synth.core.validate import evaluate
 
     real = _read(args.real)
     synth = _read(args.synthetic)

@@ -3,16 +3,16 @@
 ## Installatie
 
 ```bash
-pip install ceda-synth
+pip install edu-synth
 ```
 
 Of lokaal vanuit de broncode:
 
 ```bash
-git clone https://github.com/cedanl/ceda-synth
-cd ceda-synth
+git clone https://github.com/cedanl/edusynth
+cd edu-synth
 uv sync
-uv run ceda-synth app
+uv run edu-synth app
 ```
 
 De app opent automatisch in je browser. Gebeurt dat niet, open dan de URL die in de terminal verschijnt.
@@ -21,7 +21,7 @@ De app opent automatisch in je browser. Gebeurt dat niet, open dan de URL die in
 
 ### Stap 1 — Data uploaden
 
-Start de app en sleep een CSV- of Parquet-bestand op het uploadveld. ceda-synth toont een preview van de eerste rijen en detecteert automatisch kolomtypes.
+Start de app en sleep een CSV- of Parquet-bestand op het uploadveld. edu-synth toont een preview van de eerste rijen en detecteert automatisch kolomtypes.
 
 !!! tip "Geschikte data"
     De app werkt het best met tabellen van minimaal 500 rijen. Kleinere datasets leveren minder stabiele correlatieramingen op.
@@ -57,6 +57,6 @@ Download de synthetische data als CSV. Daarnaast kun je het **validatierapport**
 Voor batchverwerking is er ook een CLI:
 
 ```bash
-ceda-synth synthesize data.csv output.csv --rows 1000 --seed 42
-ceda-synth validate data.csv output.csv
+edu-synth synthesize data.csv output.csv --rows 1000 --seed 42
+edu-synth validate data.csv output.csv
 ```

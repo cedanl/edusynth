@@ -118,7 +118,7 @@ def render_column_hints(df: pd.DataFrame, cache_key: str = "") -> dict[str, str]
     Retourneert een dict {kolomnaam: sdtype} voor kolommen waarbij de gebruiker
     de suggestie heeft geaccepteerd of handmatig een type heeft gekozen.
     """
-    from ceda_synth.core.synthesize import infer_column_hints
+    from edu_synth.core.synthesize import infer_column_hints
 
     hints = infer_column_hints(df)
     suggestions = [h for h in hints if h.has_suggestion]

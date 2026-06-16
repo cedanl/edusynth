@@ -1,10 +1,10 @@
 # Methodologie
 
-ceda-synth is een applicatielaag bovenop [SDV (Synthetic Data Vault)](https://github.com/sdv-dev/SDV). De syntheselogica zit volledig in SDV — ceda-synth voegt een gebruiksvriendelijke interface en validatierapportage toe.
+edu-synth is een applicatielaag bovenop [SDV (Synthetic Data Vault)](https://github.com/sdv-dev/SDV). De syntheselogica zit volledig in SDV — edu-synth voegt een gebruiksvriendelijke interface en validatierapportage toe.
 
 ## Synthesemodel: Gaussian Copula
 
-Voor enkelvoudige tabellen gebruikt ceda-synth SDV's `GaussianCopulaSynthesizer`:
+Voor enkelvoudige tabellen gebruikt edu-synth SDV's `GaussianCopulaSynthesizer`:
 
 1. **Transformatie** — elke kolom wordt via de empirische CDF naar een uniforme verdeling omgezet
 2. **Correlatieschatting** — de Spearman-correlatiematrix tussen kolommen wordt geschat
@@ -27,7 +27,7 @@ Dit model is stabiel, snel en goed interpreteerbaar — ideaal voor enkelvoudige
 
 ## Relatie tot SDV
 
-ceda-synth maakt SDV toegankelijk maar vervangt het niet. Voor maatwerk, complexe tabelrelaties of geavanceerde privacyvalidatie raden we aan direct met SDV te werken:
+edu-synth maakt SDV toegankelijk maar vervangt het niet. Voor maatwerk, complexe tabelrelaties of geavanceerde privacyvalidatie raden we aan direct met SDV te werken:
 
 - [SDV-documentatie](https://docs.sdv.dev)
 - [SDV GitHub](https://github.com/sdv-dev/SDV)

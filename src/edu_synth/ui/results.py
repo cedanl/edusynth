@@ -7,7 +7,7 @@ import plotly.express as px
 import streamlit as st
 import yaml
 
-from ceda_synth.core.validate import (
+from edu_synth.core.validate import (
     RECOMMENDATION_DISCLAIMER,
     PairsReport,
     PrivacyReport,
@@ -20,7 +20,7 @@ from ceda_synth.core.validate import (
     evaluate_sdmetrics,
     usage_recommendation,
 )
-from ceda_synth.ui.theme import NPULS, apply_plotly_style
+from edu_synth.ui.theme import NPULS, apply_plotly_style
 
 # ── Verdict-helpers ────────────────────────────────────────────────────────────
 _RISK_ICON = {"laag": "✅", "matig": "⚠️", "hoog": "❌", "onbekend": "○"}
@@ -463,7 +463,7 @@ def _render_download(
         if real_metadata_dict or metadata_dict:
             with st.expander("SDV Metadata (JSON)", expanded=False):
                 st.caption(
-                    "Download de metadata als JSON om de synthese buiten ceda-synth te "
+                    "Download de metadata als JSON om de synthese buiten edu-synth te "
                     "reproduceren via `SingleTableMetadata.load_from_json()`."
                 )
                 mc1, mc2 = st.columns(2)

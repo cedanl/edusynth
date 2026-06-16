@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from ceda_synth import cli
-from ceda_synth.cli import _parse_args
+from edu_synth import cli
+from edu_synth.cli import _parse_args
 
 
 def test_app_command():

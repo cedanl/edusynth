@@ -86,7 +86,7 @@ def render_upload_sequential(df: pd.DataFrame) -> SequentialConfig | None:
     Retourneert een SequentialConfig als de gebruiker (of de auto-detectie)
     longitudinaal kiest, anders None — dan volgt de gewone tabulaire flow.
     """
-    from ceda_synth.core.synthesize import infer_sequence_columns
+    from edu_synth.core.synthesize import infer_sequence_columns
 
     looks, default_key, default_index = infer_sequence_columns(df)
     is_longitudinal = (

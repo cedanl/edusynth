@@ -1,6 +1,6 @@
 """Tests voor results.py — gegenereerde reproductiecode."""
 
-from ceda_synth.ui.results import _build_code
+from edu_synth.ui.results import _build_code
 
 
 def test_build_code_includes_seed_when_set():
