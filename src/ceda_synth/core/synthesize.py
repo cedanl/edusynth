@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
+from sdv.cag import FixedCombinations, Inequality
 from sdv.metadata import SingleTableMetadata
 from sdv.single_table import GaussianCopulaSynthesizer
 
@@ -192,6 +193,7 @@ def fit(
     -------
     Fitted SDV synthesizer — pass to :func:`sample` to generate rows.
     """
+    schema: dict | None = None
     if schema_path is not None:
         schema = _load_schema(schema_path)
         metadata = _build_metadata(schema)
@@ -202,6 +204,18 @@ def fit(
     if seed is not None:
         set_seed(seed)
     synthesizer = GaussianCopulaSynthesizer(metadata)
+
+    if schema is not None:
+        constraints = _build_constraints(schema)
+        if constraints:
+            try:
+                synthesizer.add_constraints(constraints=constraints)
+            except Exception as exc:  # SDV-validatie: conflicterende/ongeldige regels
+                raise ValueError(
+                    f"Constraints uit het schema konden niet worden toegepast: {exc}. "
+                    "Controleer of de kolommen bestaan en de regels niet botsen met de data."
+                ) from exc
+
     synthesizer.fit(data)
     return synthesizer
 
@@ -216,6 +230,53 @@ def sample(model: Any, n_rows: int) -> pd.DataFrame:
 
 def _load_schema(path: Path) -> dict:
     return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+
+
+def _build_constraints(schema: dict) -> list:
+    """Bouw SDV-cag-constraints uit het optionele ``constraints``-blok in het schema.
+
+    Cross-kolom-regels die SDV niet uit de data afleidt. Ondersteund:
+
+    - ``inequality`` — ``low ≤ high`` (``strict: true`` voor strikt ``<``,
+      standaard ``false`` zodat gelijk mag).
+    - ``fixed_combinations`` — alleen in de data voorkomende combinaties van de
+      opgegeven categorische kolommen.
+
+    Een onbekend ``type`` of ontbrekende sleutel levert een ``ValueError`` op.
+    """
+    constraints: list = []
+    for i, rule in enumerate(schema.get("constraints", []), start=1):
+        rule_type = rule.get("type")
+        if rule_type == "inequality":
+            try:
+                low, high = rule["low"], rule["high"]
+            except KeyError as exc:
+                raise ValueError(
+                    f"Constraint {i} (inequality) mist een verplichte sleutel: {exc}. "
+                    "Vereist: 'low' en 'high'."
+                ) from exc
+            constraints.append(
+                Inequality(
+                    low_column_name=low,
+                    high_column_name=high,
+                    strict_boundaries=bool(rule.get("strict", False)),
+                )
+            )
+        elif rule_type == "fixed_combinations":
+            try:
+                columns = rule["columns"]
+            except KeyError as exc:
+                raise ValueError(
+                    f"Constraint {i} (fixed_combinations) mist verplichte sleutel: {exc}. "
+                    "Vereist: 'columns'."
+                ) from exc
+            constraints.append(FixedCombinations(column_names=list(columns)))
+        else:
+            raise ValueError(
+                f"Constraint {i} heeft onbekend type {rule_type!r}. "
+                "Ondersteund: 'inequality', 'fixed_combinations'."
+            )
+    return constraints
 
 
 def _build_metadata(schema: dict) -> SingleTableMetadata:

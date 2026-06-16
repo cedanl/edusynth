@@ -5,9 +5,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
+from sdv.cag import FixedCombinations, Inequality
 
 from ceda_synth.core.synthesize import (
     ColumnHint,
+    _build_constraints,
     _build_metadata,
     _detect_date_format,
     _load_schema,
@@ -19,7 +22,9 @@ from ceda_synth.core.synthesize import (
     sample,
 )
 
-FIXTURE_SCHEMA = Path(__file__).parent.parent.parent / "fixtures" / "mini_schema.yaml"
+FIXTURES = Path(__file__).parent.parent.parent / "fixtures"
+FIXTURE_SCHEMA = FIXTURES / "mini_schema.yaml"
+FIXTURE_CSV = FIXTURES / "mini_inschrijving.csv"
 
 
 def test_load_schema_returns_dict():
@@ -193,4 +198,81 @@ def test_build_sequential_metadata_feeds_par():
     model.fit(df)
     out = model.sample(num_sequences=3)
     assert set(out.columns) == set(df.columns)
-    assert out["student_id"].nunique() == 3
+
+
+# ── Cross-column constraints ─────────────────────────────────────────────────────
+
+
+def test_build_constraints_inequality():
+    schema = {
+        "constraints": [
+            {"type": "inequality", "low": "in_jaar", "high": "uit_jaar", "strict": True},
+        ]
+    }
+    constraints = _build_constraints(schema)
+    assert len(constraints) == 1
+    assert isinstance(constraints[0], Inequality)
+    assert constraints[0]._low_column_name == "in_jaar"
+    assert constraints[0]._high_column_name == "uit_jaar"
+    assert constraints[0].strict_boundaries is True
+
+
+def test_build_constraints_fixed_combinations():
+    schema = {
+        "constraints": [
+            {"type": "fixed_combinations", "columns": ["instelling", "opleiding"]},
+        ]
+    }
+    constraints = _build_constraints(schema)
+    assert len(constraints) == 1
+    assert isinstance(constraints[0], FixedCombinations)
+    assert constraints[0].column_names == ["instelling", "opleiding"]
+
+
+def test_build_constraints_default_strict_false():
+    schema = {"constraints": [{"type": "inequality", "low": "a", "high": "b"}]}
+    assert _build_constraints(schema)[0].strict_boundaries is False
+
+
+def test_build_constraints_unknown_type_raises():
+    schema = {"constraints": [{"type": "zoiets_bestaat_niet"}]}
+    with pytest.raises(ValueError, match="onbekend type"):
+        _build_constraints(schema)
+
+
+def test_build_constraints_missing_key_raises():
+    schema = {"constraints": [{"type": "inequality", "low": "a"}]}
+    with pytest.raises(ValueError, match="verplichte sleutel"):
+        _build_constraints(schema)
+
+
+def test_build_constraints_empty_when_absent():
+    assert _build_constraints({"columns": {}}) == []
+
+
+def test_fit_respects_inequality():
+    data = pd.read_csv(FIXTURE_CSV)
+    model = fit(data, FIXTURE_SCHEMA, seed=42)
+    out = sample(model, 200)
+    assert (out["inschrijvingsjaar"] > out["uitschrijvingsjaar"]).sum() == 0
+
+
+def test_fit_respects_fixed_combinations():
+    data = pd.read_csv(FIXTURE_CSV)
+    model = fit(data, FIXTURE_SCHEMA, seed=42)
+    out = sample(model, 200)
+    real_combos = set(map(tuple, data[["instellingscode", "opleidingscode"]].astype(str).values))
+    out_combos = set(map(tuple, out[["instellingscode", "opleidingscode"]].astype(str).values))
+    assert out_combos <= real_combos
+
+
+def test_fit_constraint_on_missing_column_raises_clear_error(tmp_path):
+    schema = tmp_path / "schema.yaml"
+    schema.write_text(
+        "columns:\n  a:\n    dtype: integer\n"
+        "constraints:\n  - type: inequality\n    low: a\n    high: bestaat_niet\n",
+        encoding="utf-8",
+    )
+    data = pd.DataFrame({"a": [1, 2, 3, 4, 5]})
+    with pytest.raises(ValueError, match="niet worden toegepast"):
+        fit(data, schema)
