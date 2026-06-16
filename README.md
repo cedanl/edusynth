@@ -1,5 +1,7 @@
 # edu-synth
 
+![Demo](docs/assets/demo.gif)
+
 Applicatielaag bovenop [SDV](https://github.com/sdv-dev/SDV) voor het genereren van privacyveilige synthetische versies van Nederlandse onderwijsdatasets.
 
 Doelgroep: data-analisten en onderzoekers bij Nederlandse hogeronderwijsinstellingen die synthetische data willen genereren zonder zelf SDV te hoeven configureren.

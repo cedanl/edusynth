@@ -36,6 +36,8 @@ dev = [
     "ruff>=0.6",
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.25",
+    "playwright>=1.40",
+    "imageio-ffmpeg>=0.4",
 ]
 
 [tool.ruff]
