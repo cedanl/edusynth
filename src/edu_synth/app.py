@@ -1,4 +1,4 @@
-"""Streamlit-app — ceda-synth. Dunne orchestrator."""
+"""Streamlit-app — edu-synth. Dunne orchestrator."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ import streamlit as st
 from sdv.metadata import SingleTableMetadata
 from sdv.single_table import GaussianCopulaSynthesizer
 
-from ceda_synth.core.synthesize import detect_datetime_format, set_seed
-from ceda_synth.ui import config as cfg_ui
-from ceda_synth.ui import datasource, results
-from ceda_synth.ui.theme import inject_css
+from edu_synth.core.synthesize import detect_datetime_format, set_seed
+from edu_synth.ui import config as cfg_ui
+from edu_synth.ui import datasource, results
+from edu_synth.ui.theme import inject_css
 
 # ── Generate helpers ───────────────────────────────────────────────────────────
 
@@ -17,7 +17,7 @@ from ceda_synth.ui.theme import inject_css
 def _run_sequential(src: datasource.DataSource, cfg: cfg_ui.SequentialConfig) -> None:
     from sdv.sequential import PARSynthesizer
 
-    from ceda_synth.core.synthesize import build_sequential_metadata
+    from edu_synth.core.synthesize import build_sequential_metadata
 
     with st.spinner("PAR-model trainen (kan enkele minuten duren)…"):
         try:
@@ -83,7 +83,7 @@ def _run_tabular(src: datasource.DataSource, cfg: cfg_ui.TabularConfig) -> None:
 
 
 # ── Pagina-setup ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="ceda-synth", page_icon="🔬", layout="wide")
+st.set_page_config(page_title="edu-synth", page_icon="🔬", layout="wide")
 inject_css()
 
 col_logo, col_title = st.columns([1, 8])
@@ -94,7 +94,7 @@ with col_logo:
     )
 with col_title:
     st.markdown(
-        "<h1 style='margin:0'>ceda-synth</h1>"
+        "<h1 style='margin:0'>edu-synth</h1>"
         "<p style='margin:0;color:#6B7280;font-size:.9rem'>"
         "Synthetische data genereren · CEDA/Npuls · "
         "powered by <a href='https://github.com/sdv-dev/SDV' target='_blank'>SDV</a></p>",

@@ -1,5 +1,5 @@
 [project]
-name = "ceda-synth"
+name = "edu-synth"
 version = "0.1.0"
 description = "Synthetic data generation for Dutch educational datasets"
 readme = "README.md"
@@ -17,18 +17,18 @@ dependencies = [
 ]
 
 [project.scripts]
-ceda-synth = "ceda_synth.cli:main"
+edu-synth = "edu_synth.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/cedanl/ceda-synth"
-Repository = "https://github.com/cedanl/ceda-synth"
+Homepage = "https://github.com/cedanl/edusynth"
+Repository = "https://github.com/cedanl/edusynth"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ceda_synth"]
+packages = ["src/edu_synth"]
 
 [dependency-groups]
 dev = [
@@ -45,7 +45,7 @@ line-length = 100
 select = ["E", "F", "I"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["ceda_synth"]
+known-first-party = ["edu_synth"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

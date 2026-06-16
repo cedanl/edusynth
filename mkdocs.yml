@@ -1,8 +1,8 @@
-site_name: ceda-synth
+site_name: edu-synth
 site_description: Synthetische data genereren voor Nederlandse onderwijsdatasets
-site_url: https://cedanl.github.io/ceda-synth
-repo_url: https://github.com/cedanl/ceda-synth
-repo_name: cedanl/ceda-synth
+site_url: https://cedanl.github.io/edu-synth
+repo_url: https://github.com/cedanl/edusynth
+repo_name: cedanl/edusynth
 
 theme:
   name: material

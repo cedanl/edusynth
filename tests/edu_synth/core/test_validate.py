@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from ceda_synth.core.validate import (
+from edu_synth.core.validate import (
     RECOMMENDATION_DISCLAIMER,
     PairsReport,
     PrivacyReport,

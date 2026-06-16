@@ -1,6 +1,6 @@
 # Validatie
 
-Na het genereren toont ceda-synth een validatierapport om te beoordelen hoe goed de synthetische data de echte data nabootst.
+Na het genereren toont edu-synth een validatierapport om te beoordelen hoe goed de synthetische data de echte data nabootst.
 
 ## Statistische getrouwheid
 

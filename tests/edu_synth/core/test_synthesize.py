@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 from sdv.cag import FixedCombinations, Inequality
 
-from ceda_synth.core.synthesize import (
+from edu_synth.core.synthesize import (
     ColumnHint,
     _build_constraints,
     _build_metadata,

@@ -2,7 +2,7 @@
 
 ## Kolomtypes in de app
 
-ceda-synth detecteert kolomtypes automatisch via SDV's `detect_from_dataframe`. In de UI kun je dit per kolom overschrijven:
+edu-synth detecteert kolomtypes automatisch via SDV's `detect_from_dataframe`. In de UI kun je dit per kolom overschrijven:
 
 | App-label | SDV-type | Gebruik voor |
 |---|---|---|
@@ -38,7 +38,7 @@ columns:
 ```
 
 ```bash
-ceda-synth synthesize data.csv output.csv --schema schema.yaml --rows 1000
+edu-synth synthesize data.csv output.csv --schema schema.yaml --rows 1000
 ```
 
 Zonder `--schema` detecteert de CLI kolomtypes automatisch, net als de app.
@@ -81,7 +81,7 @@ Cross-kolom-logica zoals `inschrijvingsjaar ≤ uitschrijvingsjaar` of geldige c
 Geef `--seed <getal>` mee om reproduceerbare output te krijgen: dezelfde seed met dezelfde inputdata levert een identieke synthetische dataset.
 
 ```bash
-ceda-synth synthesize data.csv output.csv --seed 42
+edu-synth synthesize data.csv output.csv --seed 42
 ```
 
 Zonder `--seed` is elke run anders. In de app staat dezelfde optie onder **Geavanceerd — reproduceerbaarheid**.
