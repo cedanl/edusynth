@@ -90,6 +90,15 @@ def clear(page) -> None:
     page.evaluate("() => document.querySelectorAll('.__ann').forEach(n => n.remove())")
 
 
+def scroll_to(page, selector: str) -> None:
+    """Scroll element into center of viewport via plain JS (no Playwright retry)."""
+    page.evaluate(
+        "sel => { const el = document.querySelector(sel); if (el) el.scrollIntoView({block:'center', behavior:'smooth'}); }",
+        selector,
+    )
+    page.wait_for_timeout(500)
+
+
 def pause(page, ms: int) -> None:
     page.wait_for_timeout(ms)
 
@@ -148,6 +157,15 @@ def main() -> None:
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch()
+
+            # Warm up: wait for Streamlit to fully render WITHOUT recording,
+            # so the recording context starts with the app already loaded.
+            ctx_warm = browser.new_context(viewport={"width": 1280, "height": 800})
+            p_warm = ctx_warm.new_page()
+            p_warm.goto(APP_URL)
+            p_warm.wait_for_selector("[data-testid='stRadio']", timeout=30_000)
+            ctx_warm.close()
+
             ctx = browser.new_context(
                 record_video_dir=str(VIDEO_TMP),
                 record_video_size={"width": 1280, "height": 800},
@@ -157,9 +175,9 @@ def main() -> None:
 
             # ── scene 1: landing ───────────────────────────────────────────────
             page.goto(APP_URL)
-            # Streamlit renders via WebSocket; networkidle fires too early.
-            page.wait_for_selector("[data-testid='stRadio']", timeout=30_000)
-            pause(page, 1200)
+            # App is already warmed up — loads quickly this time.
+            page.wait_for_selector("[data-testid='stRadio']", timeout=15_000)
+            pause(page, 600)
 
             ann(page, "[data-testid='stRadio']", "Kies databron", side="right", color="#4F46E5")
             pause(page, 2000)
@@ -167,72 +185,70 @@ def main() -> None:
 
             # ── scene 2: highlight upload zone ────────────────────────────────
             ann(page, "[data-testid='stFileUploader']", "Upload CSV of Parquet", side="below", color="#059669")
-            pause(page, 2200)
+            pause(page, 2000)
             clear(page)
 
             # ── scene 3: upload fixture CSV ────────────────────────────────────
             page.locator("[data-testid='stFileUploader'] input[type='file']").set_input_files(
                 str(FIXTURE_CSV)
             )
-            # Wait for metrics to appear
             page.wait_for_selector("[data-testid='stMetric']", timeout=20_000)
-            pause(page, 600)
+            pause(page, 500)
 
-            # The CSV may trigger the longitudinal question; click "Nee" for the
-            # simpler tabular flow (faster generation, cleaner demo).
-            nee_radio = page.locator("label").filter(has_text="Nee").first
-            if nee_radio.count():
-                nee_radio.click()
-                pause(page, 800)
+            # CSV triggers the longitudinal question; click "Nee" for tabular flow.
+            nee = page.locator("label").filter(has_text="Nee")
+            if nee.count():
+                nee.first.click()
+                pause(page, 600)
 
-            # ── scene 4: annotate auto-detected metrics ────────────────────────
-            ann(page, "[data-testid='stHorizontalBlock']", "Automatisch gedetecteerd", side="above", color="#059669")
-            pause(page, 2200)
+            # ── scene 4: scroll to top, annotate metrics ───────────────────────
+            page.evaluate("window.scrollTo({top: 0, behavior: 'smooth'})")
+            pause(page, 500)
+            scroll_to(page, "[data-testid='stMetric']")
+            ann(page, "[data-testid='stMetric']", "Automatisch gedetecteerd", side="right", color="#059669")
+            pause(page, 2000)
             clear(page)
 
-            # ── scene 5: open column-type hints, annotate ──────────────────────
-            expander_summary = page.locator("[data-testid='stExpander'] summary").first
-            expander_summary.click()
-            pause(page, 700)
-            ann(page, "[data-testid='stExpander']", "Kolomtypes bijstellen (optioneel)", side="right", color="#D97706")
+            # ── scene 5: open column-type hints expander ───────────────────────
+            scroll_to(page, "[data-testid='stExpander']")
+            page.locator("[data-testid='stExpander'] summary").first.click()
+            pause(page, 600)
+            ann(page, "[data-testid='stExpander']", "Kolomtypes bijstellen (optioneel)", side="below", color="#D97706")
             pause(page, 2500)
             clear(page)
 
             # ── scene 6: scroll to generate button ────────────────────────────
-            page.evaluate("window.scrollTo({top: 99999, behavior: 'smooth'})")
-            pause(page, 900)
-            btn = page.get_by_role("button", name="Genereer synthetische data")
-            btn.scroll_into_view_if_needed()
-            pause(page, 400)
+            scroll_to(page, "[data-testid='stButton']")
             ann(page, "[data-testid='stButton']", "1 klik → synthetische data", side="above", color="#4F46E5")
             pause(page, 2000)
             clear(page)
 
             # ── scene 7: generate ──────────────────────────────────────────────
-            btn.click()
-            # Wait for tabs to appear (results are rendered)
+            page.get_by_role("button", name="Genereer synthetische data").click()
             page.wait_for_selector("[data-testid='stTabs']", timeout=90_000)
-            pause(page, 800)
+            pause(page, 600)
 
-            # ── scene 8: success + scorecard ──────────────────────────────────
-            page.evaluate("window.scrollTo({top: 99999, behavior: 'smooth'})")
-            pause(page, 700)
-            ann(page, "[data-testid='stTabs']", "Validatierapport · Distributies · Download", side="above", color="#059669")
-            pause(page, 2200)
-            clear(page)
-
-            # ── scene 9: scorecard metrics ─────────────────────────────────────
-            ann(page, "[data-testid='stHorizontalBlock']", "Statistische kwaliteitsscore", side="above", color="#7C3AED")
+            # ── scene 8: scroll to tabs, annotate ─────────────────────────────
+            scroll_to(page, "[data-testid='stTabs']")
+            ann(page, "[data-testid='stTabs']", "Validatierapport · Distributies · Download", side="below", color="#059669")
             pause(page, 2000)
             clear(page)
 
-            # ── scene 10: switch to distributies tab ───────────────────────────
+            # ── scene 9: scorecard in validation tab ───────────────────────────
+            page.evaluate("window.scrollBy({top: 150, behavior: 'smooth'})")
+            pause(page, 500)
+            ann(page, "[data-testid='stMetric']", "Statistische kwaliteitsscore", side="right", color="#7C3AED")
+            pause(page, 2000)
+            clear(page)
+
+            # ── scene 10: distributies tab ─────────────────────────────────────
             page.get_by_role("tab", name="Distributies").click()
-            pause(page, 1200)
-            ann(page, "[data-testid='stPlotlyChart']", "Distributies: echt vs. synthetisch", side="right", color="#059669")
+            pause(page, 1000)
+            scroll_to(page, "[data-testid='stPlotlyChart']")
+            ann(page, "[data-testid='stPlotlyChart']", "Distributies: echt vs. synthetisch", side="below", color="#059669")
             pause(page, 2200)
             clear(page)
-            pause(page, 600)
+            pause(page, 400)
 
             ctx.close()
             browser.close()
@@ -248,7 +264,7 @@ def main() -> None:
                 ffmpeg, "-i", str(webms[0]),
                 "-vf", ",".join([
                     "fps=8",
-                    "scale=900:-1:flags=lanczos",
+                    "scale=720:-1:flags=lanczos",
                     "split[s0][s1]",
                     "[s0]palettegen=max_colors=128:stats_mode=diff[p]",
                     "[s1][p]paletteuse=dither=bayer:bayer_scale=5",
