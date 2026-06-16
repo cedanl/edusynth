@@ -264,3 +264,15 @@ def test_fit_respects_fixed_combinations():
     real_combos = set(map(tuple, data[["instellingscode", "opleidingscode"]].astype(str).values))
     out_combos = set(map(tuple, out[["instellingscode", "opleidingscode"]].astype(str).values))
     assert out_combos <= real_combos
+
+
+def test_fit_constraint_on_missing_column_raises_clear_error(tmp_path):
+    schema = tmp_path / "schema.yaml"
+    schema.write_text(
+        "columns:\n  a:\n    dtype: integer\n"
+        "constraints:\n  - type: inequality\n    low: a\n    high: bestaat_niet\n",
+        encoding="utf-8",
+    )
+    data = pd.DataFrame({"a": [1, 2, 3, 4, 5]})
+    with pytest.raises(ValueError, match="niet worden toegepast"):
+        fit(data, schema)
