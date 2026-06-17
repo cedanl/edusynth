@@ -19,6 +19,8 @@ De app opent automatisch in je browser. Gebeurt dat niet, open dan de URL die in
 
 ## De app gebruiken
 
+De app leidt je in vijf stappen door de flow: **Data laden → Kolomtypes → Synthesizer → Genereren → Resultaten**. Bovenaan toont een balk waar je bent. Elke stap verschijnt pas als de vorige klaar is; met **Vorige** en **Volgende** loop je heen en weer. Na het genereren blijven alle instellingen zichtbaar, zodat je iets kunt aanpassen en opnieuw genereren.
+
 ### Stap 1 — Data uploaden
 
 Start de app. Vink eerst de toestemming aan dat je deze data mag verwerken — het uploadveld wordt pas daarna actief. Verwerking vindt volledig lokaal in je browser-sessie plaats; data wordt nergens opgeslagen of verzonden. Sleep daarna een CSV- of Parquet-bestand op het uploadveld. edu-synth toont een preview van de eerste rijen en detecteert automatisch kolomtypes.
