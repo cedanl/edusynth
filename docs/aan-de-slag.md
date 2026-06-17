@@ -21,14 +21,14 @@ De app opent automatisch in je browser. Gebeurt dat niet, open dan de URL die in
 
 ### Stap 1 — Data uploaden
 
-Start de app en sleep een CSV- of Parquet-bestand op het uploadveld. edu-synth toont een preview van de eerste rijen en detecteert automatisch kolomtypes.
+Start de app. Vink eerst de toestemming aan dat je deze data mag verwerken — het uploadveld wordt pas daarna actief. Verwerking vindt volledig lokaal in je browser-sessie plaats; data wordt nergens opgeslagen of verzonden. Sleep daarna een CSV- of Parquet-bestand op het uploadveld. edu-synth toont een preview van de eerste rijen en detecteert automatisch kolomtypes.
 
 !!! tip "Geschikte data"
     De app werkt het best met tabellen van minimaal 500 rijen. Kleinere datasets leveren minder stabiele correlatieramingen op.
 
 ### Stap 2 — Kolommen controleren
 
-Na het uploaden zie je per kolom het gedetecteerde SDV-type (`categorical`, `numerical`, `datetime`, `id`). Pas dit aan als de detectie afwijkt.
+Na het uploaden zie je per kolom het gedetecteerde SDV-type (`categorical`, `numerical`, `datetime`, `id`). Pas dit aan als de detectie afwijkt. Met **"Pas zekere aanbevelingen toe"** neem je in één klik alleen de suggesties met hoge zekerheid (≥90%) over. Onzekere suggesties worden gemarkeerd en bevestig je zelf — die worden nooit automatisch toegepast.
 
 #### Longitudinale data
 
