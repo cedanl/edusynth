@@ -68,7 +68,9 @@ def _load_demo(name: str, modality: str) -> tuple[pd.DataFrame, object]:
     return download_demo(modality=modality, dataset_name=name)
 
 
-def render() -> DataSource:
+def render() -> DataSource | None:
+    """Toon de databron-keuze. Geeft None terug zolang er nog geen upload is —
+    de aanroeper beslist dan zelf (stoppen of een bewaarde dataset hergebruiken)."""
     source = st.radio("**Databron**", ["Upload bestand", "SDV demo-data"], horizontal=True)
 
     if source == "Upload bestand":
@@ -98,10 +100,10 @@ def render() -> DataSource:
         )
         if not consent:
             st.caption("Bevestig eerst de toestemming hierboven om te uploaden.")
-            st.stop()
+            return None
         if not uploaded:
             st.info("Upload een CSV- of Parquet-bestand om te beginnen.")
-            st.stop()
+            return None
 
         # Wis "all accepted" state als een nieuw bestand geladen wordt
         prev_key = st.session_state.get("_datasource_file_key")
