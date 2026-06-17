@@ -19,7 +19,7 @@ De app opent automatisch in je browser. Gebeurt dat niet, open dan de URL die in
 
 ## De app gebruiken
 
-De app leidt je in drie stappen door de flow: **Data laden → Genereren → Resultaten**. Bovenaan toont een balk waar je bent. Bij stap 2 (Genereren) zijn kolomtypes en synthesizer-instellingen optionele verfijning — bij demo- of schone data klik je meteen op Genereer. Met **Vorige**/**Volgende** loop je heen en weer; na het genereren blijven alle instellingen zichtbaar, zodat je iets kunt aanpassen en opnieuw genereren.
+De app leidt je in drie stappen door de flow: **Data laden → Genereren → Resultaten**. Je ziet één stap tegelijk; de balk bovenaan toont waar je bent. Bij stap 2 (Genereren) zijn kolomtypes en synthesizer-instellingen optionele verfijning — bij demo- of schone data klik je meteen op Genereer. Met **Vorige**/**Volgende** loop je heen en weer. Wil je na het bekijken van de resultaten iets aanpassen, klik dan op **Terug naar instellingen** en genereer opnieuw.
 
 ### Stap 1 — Data uploaden
 

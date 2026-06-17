@@ -102,14 +102,14 @@ with col_title:
     )
 st.divider()
 
-# ── Stepper-state ────────────────────────────────────────────────────────────────
-# De flow heeft twee setup-stappen (data → genereren) plus resultaten als einde.
-# `step` is de actieve setup-stap; zodra er synthese is springt de indicator naar
-# stap 3 en blijven alle secties zichtbaar (tweak + opnieuw genereren).
-synth_ready = "synth" in st.session_state
+# ── Wizard-state ─────────────────────────────────────────────────────────────────
+# Echte wizard: precies één stap zichtbaar. De gekozen dataset bewaren we in
+# session_state["src"], zodat stap 2 en 3 'm niet opnieuw hoeven te tekenen.
 step = int(st.session_state.setdefault("step", 1))
-current = 3 if synth_ready else step
-stepper.render(current)
+synth_ready = "synth" in st.session_state
+if step == 3 and not synth_ready:
+    step = st.session_state["step"] = 2
+stepper.render(step)
 
 
 def _goto(target: int) -> None:
@@ -118,83 +118,100 @@ def _goto(target: int) -> None:
 
 
 # ── Stap 1 — Data laden ──────────────────────────────────────────────────────────
-with st.container(border=True):
+if step == 1:
     st.markdown("#### ① Data laden")
-    source = datasource.render()
+    picked = datasource.render()
 
-    if source.file_key != st.session_state.get("_file"):
-        # Nieuw bestand: vorige synthese vervalt en de flow begint opnieuw.
-        st.session_state.pop("synth", None)
-        st.session_state["step"] = 1
-        st.session_state["_file"] = source.file_key
-        if source.modality == "sequential" and source.demo_meta:
-            st.session_state["real_metadata_dict"] = source.demo_meta.to_dict()
-        else:
-            real_meta = SingleTableMetadata()
-            real_meta.detect_from_dataframe(source.df)
-            st.session_state["real_metadata_dict"] = real_meta.to_dict()
-        st.rerun()
+    if picked is not None:
+        if picked.file_key != st.session_state.get("_file"):
+            # Nieuwe dataset: vorige synthese vervalt.
+            st.session_state.pop("synth", None)
+            st.session_state["_file"] = picked.file_key
+            if picked.modality == "sequential" and picked.demo_meta:
+                st.session_state["real_metadata_dict"] = picked.demo_meta.to_dict()
+            else:
+                real_meta = SingleTableMetadata()
+                real_meta.detect_from_dataframe(picked.df)
+                st.session_state["real_metadata_dict"] = real_meta.to_dict()
+        st.session_state["src"] = picked
 
+    src = st.session_state.get("src")
+    if src is None:
+        st.stop()
+
+    if picked is None:
+        st.caption(
+            f"Huidige selectie: **{src.file_key}** — kies hierboven een ander "
+            "bestand om te vervangen, of ga verder."
+        )
     m1, m2, m3 = st.columns(3)
-    m1.metric("Rijen", f"{len(source.df):,}")
-    m2.metric("Kolommen", len(source.df.columns))
-    m3.metric("Type", source.type_label)
+    m1.metric("Rijen", f"{len(src.df):,}")
+    m2.metric("Kolommen", len(src.df.columns))
+    m3.metric("Type", src.type_label)
     with st.expander("Dataset preview", expanded=False):
-        st.dataframe(source.df.head(10), use_container_width=True)
+        st.dataframe(src.df.head(10), use_container_width=True)
 
-if current == 1:
     if st.button("Volgende → Genereren", type="primary", use_container_width=True):
         _goto(2)
     st.stop()
+
+# Vanaf hier is er altijd een dataset.
+src = st.session_state["src"]
 
 # ── Stap 2 — Genereren ───────────────────────────────────────────────────────────
 # Kolomtypes en synthesizer-instellingen zijn optionele verfijning: bij demo- of
 # schone data klopt de auto-detectie en klik je meteen op Genereer. Twijfelachtige
 # type-suggesties (<90%) komen vanzelf bovenaan te staan (render_column_hints).
-with st.container(border=True):
+if step == 2:
     st.markdown("#### ② Genereren")
     # Een eigen upload kan longitudinaal zijn → PAR. Demo-data heeft een vaste
     # modaliteit. De longitudinale keuze bepaalt de flow, dus die staat vooraan.
-    upload_seq_cfg = cfg_ui.render_upload_sequential(source.df) if source.modality is None else None
-    is_sequential = source.modality == "sequential" or upload_seq_cfg is not None
+    upload_seq_cfg = cfg_ui.render_upload_sequential(src.df) if src.modality is None else None
+    is_sequential = src.modality == "sequential" or upload_seq_cfg is not None
 
     if is_sequential:
         type_overrides = {}
-        if source.modality == "sequential":
+        if src.modality == "sequential":
             st.caption("Longitudinale demo-data — kolomtypes komen uit de meegeleverde metadata.")
-            seq_cfg = cfg_ui.render_sequential(source.df, source.demo_meta)
+            seq_cfg = cfg_ui.render_sequential(src.df, src.demo_meta)
         else:
             seq_cfg = upload_seq_cfg
     else:
-        type_overrides = datasource.render_column_hints(source.df, source.file_key)
-        tab_cfg = cfg_ui.render_tabular(source.df, type_overrides=type_overrides)
+        type_overrides = datasource.render_column_hints(src.df, src.file_key)
+        tab_cfg = cfg_ui.render_tabular(src.df, type_overrides=type_overrides)
 
     if st.button("Genereer synthetische data", type="primary", use_container_width=True):
         if is_sequential:
-            _run_sequential(source, seq_cfg)
+            _run_sequential(src, seq_cfg)
         else:
-            _run_tabular(source, tab_cfg)
+            _run_tabular(src, tab_cfg)
         _goto(3)
 
-if current == 2:
-    if st.button("← Vorige", use_container_width=True):
+    c_back, c_fwd = st.columns(2)
+    if c_back.button("← Vorige", use_container_width=True):
         _goto(1)
+    if synth_ready and c_fwd.button("Naar resultaten →", use_container_width=True):
+        _goto(3)
     st.stop()
 
 # ── Stap 3 — Resultaten ──────────────────────────────────────────────────────────
-st.divider()
+st.markdown("#### ③ Resultaten")
 st.success(f"✓ {st.session_state['n_label']} synthetische data gegenereerd")
 
 results.render(
-    source.df,
+    src.df,
     st.session_state["synth"],
     col_types=st.session_state.get("col_types"),
     primary_key=st.session_state.get("primary_key"),
-    modality=st.session_state.get("modality", source.modality),
-    demo_name=source.demo_name,
+    modality=st.session_state.get("modality", src.modality),
+    demo_name=src.demo_name,
     n_generated=st.session_state["n_generated"],
     random_seed=st.session_state.get("random_seed"),
     seq_info=st.session_state.get("seq_info"),
     metadata_dict=st.session_state.get("metadata_dict"),
     real_metadata_dict=st.session_state.get("real_metadata_dict"),
 )
+
+st.divider()
+if st.button("← Terug naar instellingen", use_container_width=True):
+    _goto(2)
