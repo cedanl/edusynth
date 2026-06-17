@@ -6,7 +6,7 @@ import streamlit as st
 from sdv.metadata import SingleTableMetadata
 from sdv.single_table import GaussianCopulaSynthesizer
 
-from edu_synth.core.synthesize import detect_datetime_format, set_seed
+from edu_synth.core.synthesize import build_constraints, detect_datetime_format, set_seed
 from edu_synth.ui import config as cfg_ui
 from edu_synth.ui import datasource, results, stepper
 from edu_synth.ui.theme import inject_css
@@ -49,7 +49,11 @@ def _run_sequential(src: datasource.DataSource, cfg: cfg_ui.SequentialConfig) ->
             st.stop()
 
 
-def _run_tabular(src: datasource.DataSource, cfg: cfg_ui.TabularConfig) -> None:
+def _run_tabular(
+    src: datasource.DataSource,
+    cfg: cfg_ui.TabularConfig,
+    constraints: list[dict] | None = None,
+) -> None:
     meta = SingleTableMetadata()
     for col_name, sdtype in cfg.col_types.items():
         # Datumkolommen: detecteer het formaat uit de data en geef het mee, anders
@@ -67,6 +71,9 @@ def _run_tabular(src: datasource.DataSource, cfg: cfg_ui.TabularConfig) -> None:
         try:
             set_seed(cfg.seed)
             model = GaussianCopulaSynthesizer(meta)
+            cag = build_constraints(constraints or [])
+            if cag:
+                model.add_constraints(constraints=cag)
             model.fit(src.df)
             st.session_state["synth"] = model.sample(num_rows=cfg.n_rows)
             st.session_state["n_label"] = f"{cfg.n_rows:,} rijen"
@@ -124,8 +131,11 @@ if step == 1:
 
     if picked is not None:
         if picked.file_key != st.session_state.get("_file"):
-            # Nieuwe dataset: vorige synthese vervalt.
+            # Nieuwe dataset: vorige synthese én logische regels vervallen
+            # (die verwijzen naar kolommen van het oude bestand).
             st.session_state.pop("synth", None)
+            st.session_state.pop("_ineq_rules", None)
+            st.session_state.pop("fixed_combo", None)
             st.session_state["_file"] = picked.file_key
             if picked.modality == "sequential" and picked.demo_meta:
                 st.session_state["real_metadata_dict"] = picked.demo_meta.to_dict()
@@ -179,12 +189,13 @@ if step == 2:
     else:
         type_overrides = datasource.render_column_hints(src.df, src.file_key)
         tab_cfg = cfg_ui.render_tabular(src.df, type_overrides=type_overrides)
+        constraint_rules = cfg_ui.render_constraints(src.df)
 
     if st.button("Genereer synthetische data", type="primary", use_container_width=True):
         if is_sequential:
             _run_sequential(src, seq_cfg)
         else:
-            _run_tabular(src, tab_cfg)
+            _run_tabular(src, tab_cfg, constraint_rules)
         _goto(3)
 
     c_back, c_fwd = st.columns(2)

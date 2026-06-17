@@ -135,6 +135,78 @@ def render_upload_sequential(df: pd.DataFrame) -> SequentialConfig | None:
     return SequentialConfig(n_sequences=n_sequences, seq_key=seq_key, seq_idx=seq_idx, seed=seed)
 
 
+_INEQ_OPERATORS = ["≤", "<", "≥", ">"]
+
+
+def inequality_rule(low_col: str, operator: str, high_col: str) -> dict:
+    """Vertaal een 'A operator B'-keuze naar een inequality-rule-dict.
+
+    ``≤``/``<``: low=A, high=B. ``≥``/``>``: kolommen omgedraaid. ``strict`` bij
+    ``<`` en ``>``. Vorm gelijk aan het schema-``constraints``-blok, zodat
+    ``core.synthesize.build_constraints`` het kan vertalen naar SDV-cag.
+    """
+    if operator in ("≥", ">"):
+        low_col, high_col = high_col, low_col
+    return {
+        "type": "inequality",
+        "low": low_col,
+        "high": high_col,
+        "strict": operator in ("<", ">"),
+    }
+
+
+def render_constraints(df: pd.DataFrame) -> list[dict]:
+    """Niveau 2: point-and-click logische regels tussen kolommen.
+
+    Retourneert rule-dicts (zelfde vorm als het schema-``constraints``-blok). Geen
+    voor-validatie: ongeldige of botsende regels worden afgevangen bij het genereren.
+    """
+    cols = list(df.columns)
+    rules: list[dict] = []
+
+    with st.expander("Logische regels (optioneel)", expanded=False):
+        st.caption(
+            "Regels tussen kolommen die de tool niet uit de data kan afleiden. "
+            "Laat leeg als je niets wilt afdwingen."
+        )
+
+        st.markdown("**Volgorde tussen kolommen**")
+        st.caption("Bijvoorbeeld: een einddatum hoort ≥ de startdatum te zijn.")
+        saved: list[dict] = st.session_state.setdefault("_ineq_rules", [])
+        for idx, rule in enumerate(list(saved)):
+            symbol = "<" if rule["strict"] else "≤"
+            c_txt, c_del = st.columns([5, 1])
+            c_txt.markdown(f"`{rule['low']}` {symbol} `{rule['high']}`")
+            if c_del.button("❌", key=f"del_ineq_{idx}", help="Regel verwijderen"):
+                saved.pop(idx)
+                st.rerun()
+
+        c1, c2, c3, c4 = st.columns([3, 2, 3, 2])
+        col_a = c1.selectbox("Kolom A", cols, key="ineq_a", label_visibility="collapsed")
+        op = c2.selectbox("Operator", _INEQ_OPERATORS, key="ineq_op", label_visibility="collapsed")
+        col_b = c3.selectbox("Kolom B", cols, key="ineq_b", label_visibility="collapsed")
+        if c4.button("➕ Regel", use_container_width=True):
+            if col_a == col_b:
+                st.warning("Kies twee verschillende kolommen.")
+            else:
+                saved.append(inequality_rule(col_a, op, col_b))
+                st.rerun()
+        rules.extend(saved)
+
+        st.markdown("**Geldige combinaties**")
+        st.caption("Houd alleen kolomcombinaties die in de echte data voorkomen.")
+        fixed = st.multiselect(
+            "Houd deze kolommen logisch bij elkaar",
+            cols,
+            key="fixed_combo",
+            label_visibility="collapsed",
+        )
+        if len(fixed) >= 2:
+            rules.append({"type": "fixed_combinations", "columns": list(fixed)})
+
+    return rules
+
+
 def render_sequential(df: pd.DataFrame, demo_meta: object) -> SequentialConfig:
     table_meta = list(demo_meta.tables.values())[0]
     seq_key = table_meta.sequence_key

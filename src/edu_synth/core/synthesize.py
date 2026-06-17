@@ -233,7 +233,12 @@ def _load_schema(path: Path) -> dict:
 
 
 def _build_constraints(schema: dict) -> list:
-    """Bouw SDV-cag-constraints uit het optionele ``constraints``-blok in het schema.
+    """Bouw SDV-cag-constraints uit het optionele ``constraints``-blok in het schema."""
+    return build_constraints(schema.get("constraints", []))
+
+
+def build_constraints(rules: list[dict]) -> list:
+    """Vertaal rule-dicts naar SDV-cag-constraints.
 
     Cross-kolom-regels die SDV niet uit de data afleidt. Ondersteund:
 
@@ -242,10 +247,12 @@ def _build_constraints(schema: dict) -> list:
     - ``fixed_combinations`` — alleen in de data voorkomende combinaties van de
       opgegeven categorische kolommen.
 
-    Een onbekend ``type`` of ontbrekende sleutel levert een ``ValueError`` op.
+    Dezelfde rule-vorm als het ``constraints``-blok in het YAML-schema, zodat de
+    app (point-and-click) en de CLI (schema) één vertaalpad delen. Een onbekend
+    ``type`` of ontbrekende sleutel levert een ``ValueError`` op.
     """
     constraints: list = []
-    for i, rule in enumerate(schema.get("constraints", []), start=1):
+    for i, rule in enumerate(rules, start=1):
         rule_type = rule.get("type")
         if rule_type == "inequality":
             try:
