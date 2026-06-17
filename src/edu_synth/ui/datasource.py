@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import io
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import pandas as pd
 import streamlit as st
+
+if TYPE_CHECKING:
+    from edu_synth.core.synthesize import ColumnHint
 
 _TYPE_OPTIONS: dict[str, str] = {
     "Tabular": "single_table",
@@ -25,6 +29,10 @@ _SDTYPE_NL: dict[str, str] = {
     "datetime": "Datum/tijd",
     "id": "ID / tekst",
 }
+
+# Drempel waarboven een type-suggestie zeker genoeg is om in bulk toe te passen.
+# Suggesties eronder (bijv. 0.65/0.7) worden nooit blind overgenomen.
+_HIGH_CONFIDENCE = 0.9
 
 
 @dataclass
@@ -64,15 +72,33 @@ def render() -> DataSource:
     source = st.radio("**Databron**", ["Upload bestand", "SDV demo-data"], horizontal=True)
 
     if source == "Upload bestand":
+        st.info(
+            "🔒 Verwerking vindt volledig lokaal in je browser-sessie plaats. "
+            "Je data wordt nergens opgeslagen of verzonden."
+        )
+        consent = st.checkbox(
+            "Ik bevestig dat ik toestemming heb om deze data te verwerken "
+            "voor synthese-doeleinden.",
+            key="_privacy_consent",
+        )
+        with st.popover("Wat telt als persoonsgegevens?"):
+            st.markdown(
+                "Persoonsgegevens zijn alle gegevens over een identificeerbaar "
+                "persoon: naam, studentnummer, e-mailadres, geboortedatum, maar "
+                "ook combinaties die samen tot één persoon herleidbaar zijn "
+                "(bijvoorbeeld opleiding + cohort + postcode). Verwerk alleen "
+                "data waarvoor je een grondslag hebt."
+            )
+
         uploaded = st.file_uploader(
             "Sleep een bestand hierheen of klik om te bladeren",
             type=["csv", "parquet"],
             label_visibility="collapsed",
+            disabled=not consent,
         )
-        st.caption(
-            "🔒 Jouw data verlaat dit apparaat niet — "
-            "verwerking vindt lokaal in je browser-sessie plaats."
-        )
+        if not consent:
+            st.caption("Bevestig eerst de toestemming hierboven om te uploaden.")
+            st.stop()
         if not uploaded:
             st.info("Upload een CSV- of Parquet-bestand om te beginnen.")
             st.stop()
@@ -112,6 +138,41 @@ def render() -> DataSource:
     )
 
 
+def partition_by_confidence(
+    suggestions: list[ColumnHint], threshold: float = _HIGH_CONFIDENCE
+) -> tuple[list[ColumnHint], list[ColumnHint]]:
+    """Splits type-suggesties in (zeker ≥ drempel, onzeker < drempel).
+
+    Onzekere suggesties mogen nooit blind in bulk worden toegepast; de gebruiker
+    bevestigt die handmatig.
+    """
+    high = [h for h in suggestions if h.confidence >= threshold]
+    low = [h for h in suggestions if h.confidence < threshold]
+    return high, low
+
+
+def _render_hint_row(hint: ColumnHint, cache_key: str, *, uncertain: bool = False) -> str:
+    """Render één kolomtype-keuze (radio) en geef de gekozen sdtype terug."""
+    c1, c2, c3 = st.columns([3, 3, 1])
+    marker = "🔸 " if uncertain else ""
+    c1.markdown(f"**{marker}{hint.name}**")
+    c1.caption(hint.reason)
+    choices = [hint.suggested_sdtype, hint.detected_sdtype]
+    choice = c2.radio(
+        f"type_{hint.name}",
+        choices,
+        format_func=lambda x: (
+            f"✅ {_SDTYPE_NL.get(x, x)} (aanbevolen)"
+            if x == hint.suggested_sdtype
+            else f"↩ {_SDTYPE_NL.get(x, x)} (origineel)"
+        ),
+        key=f"hint_{cache_key}_{hint.name}",
+        label_visibility="collapsed",
+    )
+    c3.metric("Zekerheid", f"{hint.confidence:.0%}")
+    return choice
+
+
 def render_column_hints(df: pd.DataFrame, cache_key: str = "") -> dict[str, str]:
     """Toon kolomtype-hints en geef gebruikersgekozen overrides terug.
 
@@ -130,6 +191,7 @@ def render_column_hints(df: pd.DataFrame, cache_key: str = "") -> dict[str, str]
     overrides: dict[str, str] = {}
 
     if suggestions:
+        high_conf, low_conf = partition_by_confidence(suggestions)
         all_key = f"all_accepted_{cache_key}"
         with st.expander(
             f"⚠️ {len(suggestions)} kolomtype(s) om te controleren",
@@ -140,16 +202,19 @@ def render_column_hints(df: pd.DataFrame, cache_key: str = "") -> dict[str, str]
                 "Controleer en pas aan waar nodig — dit heeft direct invloed op de kwaliteit."
             )
 
-            col_btn1, col_btn2 = st.columns([2, 1])
-            if col_btn1.button(
-                "✓ Pas alle aanbevelingen toe",
-                key=f"accept_all_{cache_key}",
-                use_container_width=True,
-            ):
-                st.session_state[all_key] = True
+            # Alleen de zekere suggesties (≥90%) kunnen in bulk worden toegepast.
+            applied_all = bool(high_conf) and st.session_state.get(all_key, False)
+            if high_conf:
+                col_btn1, col_btn2 = st.columns([2, 1])
+                if col_btn1.button(
+                    f"✓ Pas {len(high_conf)} zekere aanbeveling(en) toe",
+                    key=f"accept_all_{cache_key}",
+                    use_container_width=True,
+                ):
+                    st.session_state[all_key] = True
+                    applied_all = True
 
-            if st.session_state.get(all_key):
-                if col_btn2.button(
+                if applied_all and col_btn2.button(
                     "↩ Handmatig aanpassen",
                     key=f"manual_adjust_{cache_key}",
                     use_container_width=True,
@@ -157,29 +222,22 @@ def render_column_hints(df: pd.DataFrame, cache_key: str = "") -> dict[str, str]
                     st.session_state[all_key] = False
                     st.rerun()
 
-            if st.session_state.get(all_key):
-                st.success("Alle aanbevelingen zijn toegepast.")
-                for hint in suggestions:
+            if applied_all:
+                st.success(f"{len(high_conf)} zekere aanbeveling(en) toegepast.")
+                for hint in high_conf:
                     overrides[hint.name] = hint.suggested_sdtype
             else:
-                for hint in suggestions:
-                    c1, c2, c3 = st.columns([3, 3, 1])
-                    c1.markdown(f"**{hint.name}**")
-                    c1.caption(hint.reason)
-                    choices = [hint.suggested_sdtype, hint.detected_sdtype]
-                    choice = c2.radio(
-                        f"type_{hint.name}",
-                        choices,
-                        format_func=lambda x: (
-                            f"✅ {_SDTYPE_NL.get(x, x)} (aanbevolen)"
-                            if x == hint.suggested_sdtype
-                            else f"↩ {_SDTYPE_NL.get(x, x)} (origineel)"
-                        ),
-                        key=f"hint_{cache_key}_{hint.name}",
-                        label_visibility="collapsed",
-                    )
-                    c3.metric("Zekerheid", f"{hint.confidence:.0%}")
-                    overrides[hint.name] = choice
+                for hint in high_conf:
+                    overrides[hint.name] = _render_hint_row(hint, cache_key)
+
+            # Onzekere suggesties (<90%) altijd handmatig — nooit blind toepassen.
+            if low_conf:
+                st.warning(
+                    f"🔸 {len(low_conf)} onzekere suggestie(s) — deze worden niet "
+                    "automatisch toegepast. Controleer ze hieronder."
+                )
+                for hint in low_conf:
+                    overrides[hint.name] = _render_hint_row(hint, cache_key, uncertain=True)
 
     if warnings:
         with st.expander(f"ℹ️ {len(warnings)} waarschuwing(en)", expanded=False):
