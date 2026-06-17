@@ -103,12 +103,12 @@ with col_title:
 st.divider()
 
 # ── Stepper-state ────────────────────────────────────────────────────────────────
-# Eén lange scrollpagina overweldigde gebruikers; we onthullen de stappen
-# progressief. `step` is de actieve stap tijdens de setup; zodra er synthese is,
-# springt de indicator naar stap 5 en tonen we alle secties (tweak + regenereren).
+# De flow heeft twee setup-stappen (data → genereren) plus resultaten als einde.
+# `step` is de actieve setup-stap; zodra er synthese is springt de indicator naar
+# stap 3 en blijven alle secties zichtbaar (tweak + opnieuw genereren).
 synth_ready = "synth" in st.session_state
 step = int(st.session_state.setdefault("step", 1))
-current = 5 if synth_ready else step
+current = 3 if synth_ready else step
 stepper.render(current)
 
 
@@ -143,71 +143,45 @@ with st.container(border=True):
         st.dataframe(source.df.head(10), use_container_width=True)
 
 if current == 1:
-    if st.button("Volgende → Kolomtypes", type="primary", use_container_width=True):
+    if st.button("Volgende → Genereren", type="primary", use_container_width=True):
         _goto(2)
     st.stop()
 
-# ── Stap 2 — Kolomtypes ──────────────────────────────────────────────────────────
-# Een eigen upload kan longitudinaal zijn → PAR. Demo-data heeft een vaste
-# modaliteit. De longitudinale keuze bepaalt de flow, dus die staat hier vooraan.
+# ── Stap 2 — Genereren ───────────────────────────────────────────────────────────
+# Kolomtypes en synthesizer-instellingen zijn optionele verfijning: bij demo- of
+# schone data klopt de auto-detectie en klik je meteen op Genereer. Twijfelachtige
+# type-suggesties (<90%) komen vanzelf bovenaan te staan (render_column_hints).
 with st.container(border=True):
-    st.markdown("#### ② Kolomtypes")
+    st.markdown("#### ② Genereren")
+    # Een eigen upload kan longitudinaal zijn → PAR. Demo-data heeft een vaste
+    # modaliteit. De longitudinale keuze bepaalt de flow, dus die staat vooraan.
     upload_seq_cfg = cfg_ui.render_upload_sequential(source.df) if source.modality is None else None
     is_sequential = source.modality == "sequential" or upload_seq_cfg is not None
+
     if is_sequential:
         type_overrides = {}
         if source.modality == "sequential":
             st.caption("Longitudinale demo-data — kolomtypes komen uit de meegeleverde metadata.")
+            seq_cfg = cfg_ui.render_sequential(source.df, source.demo_meta)
+        else:
+            seq_cfg = upload_seq_cfg
     else:
         type_overrides = datasource.render_column_hints(source.df, source.file_key)
-
-if current == 2:
-    c_prev, c_next = st.columns(2)
-    if c_prev.button("← Vorige", use_container_width=True):
-        _goto(1)
-    if c_next.button("Volgende → Synthesizer", type="primary", use_container_width=True):
-        _goto(3)
-    st.stop()
-
-# ── Stap 3 — Synthesizer ─────────────────────────────────────────────────────────
-with st.container(border=True):
-    st.markdown("#### ③ Synthesizer")
-    if source.modality == "sequential":
-        seq_cfg = cfg_ui.render_sequential(source.df, source.demo_meta)
-    elif upload_seq_cfg is not None:
-        seq_cfg = upload_seq_cfg
-        st.caption("PAR-synthesizer voor longitudinale data — ingesteld bij stap 2.")
-    else:
         tab_cfg = cfg_ui.render_tabular(source.df, type_overrides=type_overrides)
 
-if current == 3:
-    c_prev, c_next = st.columns(2)
-    if c_prev.button("← Vorige", use_container_width=True):
-        _goto(2)
-    if c_next.button("Volgende → Genereren", type="primary", use_container_width=True):
-        _goto(4)
-    st.stop()
-
-# ── Stap 4 — Genereren ───────────────────────────────────────────────────────────
-with st.container(border=True):
-    st.markdown("#### ④ Genereren")
-    if is_sequential:
-        st.caption(f"Klaar om {seq_cfg.n_sequences} sequenties te genereren (PAR-synthesizer).")
-    else:
-        st.caption(f"Klaar om {tab_cfg.n_rows:,} rijen te genereren (GaussianCopula).")
     if st.button("Genereer synthetische data", type="primary", use_container_width=True):
         if is_sequential:
             _run_sequential(source, seq_cfg)
         else:
             _run_tabular(source, tab_cfg)
-        _goto(5)
-
-if current == 4:
-    if st.button("← Vorige", use_container_width=True):
         _goto(3)
+
+if current == 2:
+    if st.button("← Vorige", use_container_width=True):
+        _goto(1)
     st.stop()
 
-# ── Stap 5 — Resultaten ──────────────────────────────────────────────────────────
+# ── Stap 3 — Resultaten ──────────────────────────────────────────────────────────
 st.divider()
 st.success(f"✓ {st.session_state['n_label']} synthetische data gegenereerd")
 

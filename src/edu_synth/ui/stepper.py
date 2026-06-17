@@ -6,7 +6,7 @@ import streamlit as st
 
 from edu_synth.ui.theme import NPULS
 
-STEP_LABELS = ["Data laden", "Kolomtypes", "Synthesizer", "Genereren", "Resultaten"]
+STEP_LABELS = ["Data laden", "Genereren", "Resultaten"]
 
 _GREY_BG = "#E5E7EB"
 _GREY_FG = "#9CA3AF"

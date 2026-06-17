@@ -4,12 +4,10 @@ from edu_synth.ui.stepper import STEP_LABELS, step_status
 
 
 def test_step_status_done_active_future():
-    # huidige stap = 3
-    assert step_status(1, 3) == "done"
-    assert step_status(2, 3) == "done"
-    assert step_status(3, 3) == "active"
-    assert step_status(4, 3) == "future"
-    assert step_status(5, 3) == "future"
+    # huidige stap = 2 (van 3)
+    assert step_status(1, 2) == "done"
+    assert step_status(2, 2) == "active"
+    assert step_status(3, 2) == "future"
 
 
 def test_step_status_first_step():
@@ -18,9 +16,9 @@ def test_step_status_first_step():
 
 
 def test_step_status_last_step_all_done():
-    statuses = [step_status(i, 5) for i in range(1, 6)]
-    assert statuses == ["done", "done", "done", "done", "active"]
+    statuses = [step_status(i, 3) for i in range(1, 4)]
+    assert statuses == ["done", "done", "active"]
 
 
-def test_five_labels():
-    assert len(STEP_LABELS) == 5
+def test_three_labels():
+    assert STEP_LABELS == ["Data laden", "Genereren", "Resultaten"]
