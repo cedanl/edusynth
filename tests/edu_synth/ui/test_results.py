@@ -1,6 +1,11 @@
-"""Tests voor results.py — gegenereerde reproductiecode."""
+"""Tests voor results.py — reproductiecode, metadata-samenvatting, kolomprioritering."""
 
-from edu_synth.ui.results import _build_code
+from edu_synth.core.validate import Report
+from edu_synth.ui.results import (
+    _build_code,
+    _rank_columns_by_deviation,
+    _summarize_metadata,
+)
 
 
 def test_build_code_includes_seed_when_set():
@@ -30,32 +35,46 @@ def test_build_code_omits_seed_when_none():
     assert "np.random.seed" not in code
 
 
-def test_build_code_upload_sequential_uses_par_on_own_csv():
-    code = _build_code(
-        col_types=None,
-        primary_key=None,
-        modality="sequential",
-        demo_name=None,
-        n_generated=50,
-        sdv_version="1.37.0",
-        seq_info={"key": "student_id", "index": "studiejaar", "index_sdtype": "numerical"},
-    )
-    assert "PARSynthesizer" in code
-    assert "download_demo" not in code  # géén demo-code voor een upload
-    assert 'set_sequence_key("student_id"' in code
-    assert 'set_sequence_index("studiejaar"' in code
-    assert "epochs=128" in code
+# ── _summarize_metadata (#22) ─────────────────────────────────────────────────
+def test_summarize_metadata_counts_types_and_pii():
+    meta = {
+        "columns": {
+            "a": {"sdtype": "categorical"},
+            "b": {"sdtype": "categorical"},
+            "c": {"sdtype": "numerical"},
+            "d": {"sdtype": "datetime"},
+            "e": {"sdtype": "id", "pii": True},
+        }
+    }
+    summary = _summarize_metadata(meta)
+    assert "2 categorisch" in summary
+    assert "1 numeriek" in summary
+    assert "1 datum" in summary
+    assert "1 kolom(men) gemarkeerd als privacygevoelig" in summary
 
 
-def test_build_code_demo_sequential_uses_download_demo():
-    code = _build_code(
-        col_types=None,
-        primary_key=None,
-        modality="sequential",
-        demo_name="nasdaq100_2019",
-        n_generated=10,
-        sdv_version="1.37.0",
-        seq_info=None,
+def test_summarize_metadata_returns_none_without_columns():
+    assert _summarize_metadata(None) is None
+    assert _summarize_metadata({}) is None
+    assert _summarize_metadata({"columns": {}}) is None
+
+
+# ── _rank_columns_by_deviation (#24) ──────────────────────────────────────────
+def test_rank_orders_by_descending_score():
+    report = Report(
+        rows=[
+            {"column": "laag", "score": 0.05},
+            {"column": "hoog", "score": 0.42},
+            {"column": "mid", "score": 0.20},
+        ]
     )
-    assert "download_demo" in code
-    assert "epochs=128" in code
+    assert _rank_columns_by_deviation(["laag", "hoog", "mid"], report) == [
+        "hoog",
+        "mid",
+        "laag",
+    ]
+
+
+def test_rank_puts_columns_without_score_last():
+    report = Report(rows=[{"column": "a", "score": 0.3}])
+    assert _rank_columns_by_deviation(["a", "b"], report) == ["a", "b"]

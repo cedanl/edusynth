@@ -46,11 +46,11 @@ De app toont per kolom:
 
 - **TV-afstand** (categorisch) — hoe goed kloppen de verhoudingen? Onder `0.2` is groen.
 - **Wasserstein-afstand** (numeriek) — hoe dicht liggen de verdelingen bij elkaar?
-- Distributieplots echte vs. synthetische data
+- Distributieplots echte vs. synthetische data. Standaard toont de app de 8 meest afwijkende kolommen; via de selectie bovenaan de tab kies je zelf welke kolommen je ziet. Dat houdt brede datasets (tientallen kolommen) overzichtelijk.
 
 ### Stap 5 — Exporteren
 
-Download de synthetische data als CSV. Daarnaast kun je het **validatierapport** als `validation_report.json` downloaden: dit bevat alle scores (per-kolom afstanden, sdmetrics, DCR/NNDR) en de synthese-parameters (synthesizer, aantal trainingsrijen, seed, SDV-versie). De app toont ook het bijbehorende SDV-codeblok om hetzelfde resultaat zelf te reproduceren.
+Download de synthetische data als CSV. Daarnaast kun je het **validatierapport** als `validation_report.json` downloaden: dit bevat alle scores (per-kolom afstanden, sdmetrics, DCR/NNDR) en de synthese-parameters (synthesizer, aantal trainingsrijen, seed, SDV-versie). Een korte samenvatting in gewone taal toont welke kolomtypes zijn herkend en hoeveel kolommen als privacygevoelig zijn gemarkeerd. De ruwe SDV-metadata (JSON) en het SDV-codeblok om het resultaat zelf te reproduceren staan onder **Technische details**.
 
 ## CLI (geavanceerd)
 
