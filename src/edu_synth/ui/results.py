@@ -146,7 +146,7 @@ def render(
     with tab_val:
         _render_validation(report, priv, verdict, recommendation, pairs, primary_key, sdm)
     with tab_dist:
-        _render_distributions(df, synth)
+        _render_distributions(df, synth, report)
     with tab_dl:
         _render_download(
             synth,
@@ -327,11 +327,35 @@ def _render_sdmetrics(sdm: SDMetricsReport) -> None:
 
 
 # ── Distributies-tab ───────────────────────────────────────────────────────────
-def _render_distributions(df: pd.DataFrame, synth: pd.DataFrame) -> None:
+def _rank_columns_by_deviation(columns: list[str], report: Report) -> list[str]:
+    """Sorteer kolommen op aflopende afwijking — hoogste score (meest afwijkend) eerst.
+
+    Kolommen zonder score belanden achteraan; gelijke scores behouden hun volgorde.
+    """
+    score_by_col = {r["column"]: r.get("score", 0.0) for r in report.rows if "column" in r}
+    return sorted(columns, key=lambda c: score_by_col.get(c, 0.0), reverse=True)
+
+
+def _render_distributions(df: pd.DataFrame, synth: pd.DataFrame, report: Report) -> None:
+    shared = [c for c in df.columns if c in synth.columns]
+    if not shared:
+        st.info("Geen gedeelde kolommen om te visualiseren.")
+        return
+
+    # Standaard de 8 meest afwijkende kolommen tonen — bij brede datasets (50+
+    # kolommen) voorkomt dit een eindeloze scroll en tientallen zware Plotly-figuren.
+    default_cols = _rank_columns_by_deviation(shared, report)[:8]
+    selected = st.multiselect(
+        "Kolommen om te visualiseren (standaard: 8 meest afwijkende)",
+        options=shared,
+        default=default_cols,
+    )
+    if not selected:
+        st.info("Selecteer minimaal één kolom om de verdeling te tonen.")
+        return
+
     cols = st.columns(2)
-    for i, col_name in enumerate(df.columns):
-        if col_name not in synth.columns:
-            continue
+    for i, col_name in enumerate(selected):
         with cols[i % 2]:
             if pd.api.types.is_numeric_dtype(df[col_name]):
                 plot_df = pd.concat(
@@ -382,6 +406,38 @@ def _render_distributions(df: pd.DataFrame, synth: pd.DataFrame) -> None:
 
 
 # ── Download-tab ───────────────────────────────────────────────────────────────
+_SDTYPE_SUMMARY_NL = {
+    "categorical": "categorisch",
+    "numerical": "numeriek",
+    "datetime": "datum",
+    "id": "ID",
+    "boolean": "boolean",
+}
+
+
+def _summarize_metadata(metadata_dict: dict | None) -> str | None:
+    """Vat een SDV-metadata-dict samen in gewone taal (kolomtypes + privacyvlaggen).
+
+    Retourneert None als er geen kolommen zijn, zodat de aanroeper niets toont.
+    """
+    columns = (metadata_dict or {}).get("columns") or {}
+    if not columns:
+        return None
+
+    counts: dict[str, int] = {}
+    pii = 0
+    for spec in columns.values():
+        sdtype = spec.get("sdtype", "onbekend")
+        counts[sdtype] = counts.get(sdtype, 0) + 1
+        if spec.get("pii"):
+            pii += 1
+
+    parts = [f"{n} {_SDTYPE_SUMMARY_NL.get(t, t)}" for t, n in counts.items()]
+    return (
+        f"Kolomtypes herkend: {', '.join(parts)}. {pii} kolom(men) gemarkeerd als privacygevoelig."
+    )
+
+
 def _render_download(
     synth: pd.DataFrame,
     *,
@@ -434,6 +490,10 @@ def _render_download(
     )
     st.caption("Bevat alle scores en synthese-parameters. Bewaar het naast de CSV.")
 
+    meta_summary = _summarize_metadata(metadata_dict or real_metadata_dict)
+    if meta_summary:
+        st.caption(meta_summary)
+
     st.divider()
 
     with st.expander("Reproductie & Parameters", expanded=False):
@@ -461,10 +521,11 @@ def _render_download(
             language="yaml",
         )
         if real_metadata_dict or metadata_dict:
-            with st.expander("SDV Metadata (JSON)", expanded=False):
+            with st.expander("Technische details — SDV Metadata (JSON)", expanded=False):
                 st.caption(
-                    "Download de metadata als JSON om de synthese buiten edu-synth te "
-                    "reproduceren via `SingleTableMetadata.load_from_json()`."
+                    "Voor ontwikkelaars. Download de metadata als JSON om de synthese "
+                    "buiten edu-synth te reproduceren via "
+                    "`SingleTableMetadata.load_from_json()`."
                 )
                 mc1, mc2 = st.columns(2)
 
