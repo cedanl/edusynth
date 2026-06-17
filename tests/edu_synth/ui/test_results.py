@@ -2,6 +2,7 @@
 
 from edu_synth.core.validate import Report
 from edu_synth.ui.results import (
+    _bruikbaarheid_verdict,
     _build_code,
     _rank_columns_by_deviation,
     _summarize_metadata,
@@ -78,3 +79,20 @@ def test_rank_orders_by_descending_score():
 def test_rank_puts_columns_without_score_last():
     report = Report(rows=[{"column": "a", "score": 0.3}])
     assert _rank_columns_by_deviation(["a", "b"], report) == ["a", "b"]
+
+
+# ── _bruikbaarheid_verdict (#18, bepaalt de banner-kleur) ────────────────────
+def test_bruikbaarheid_high_risk_when_either_high():
+    assert _bruikbaarheid_verdict("hoog", "laag")[1] == "hoog"
+    assert _bruikbaarheid_verdict("laag", "hoog")[1] == "hoog"
+
+
+def test_bruikbaarheid_matig_on_voorbehoud_or_unknown():
+    assert _bruikbaarheid_verdict("matig", "laag")[1] == "matig"
+    assert _bruikbaarheid_verdict("laag", "onbekend")[1] == "matig"
+
+
+def test_bruikbaarheid_laag_when_both_low():
+    label, risk = _bruikbaarheid_verdict("laag", "laag")
+    assert risk == "laag"
+    assert label == "Hoge bruikbaarheid"
