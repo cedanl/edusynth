@@ -32,6 +32,8 @@ Start de app. Vink eerst de toestemming aan dat je deze data mag verwerken — h
 
 Na het uploaden zie je per kolom het gedetecteerde SDV-type (`categorical`, `numerical`, `datetime`, `id`). Pas dit aan als de detectie afwijkt. Met **"Pas zekere aanbevelingen toe"** neem je in één klik alleen de suggesties met hoge zekerheid (≥90%) over. Onzekere suggesties worden gemarkeerd en bevestig je zelf — die worden nooit automatisch toegepast.
 
+Onder **Logische regels (optioneel)** geef je zonder code verbanden tussen kolommen op die SDV niet uit de data afleidt: een volgorde tussen twee kolommen (bijvoorbeeld einddatum ≥ startdatum) of kolommen die alleen in bestaande combinaties mogen voorkomen. Die worden tijdens de synthese afgedwongen. Zie [Cross-kolom constraints](configuratie.md#cross-kolom-constraints).
+
 #### Longitudinale data
 
 Heeft elke entiteit (student, instelling) meerdere rijen over de tijd — bijvoorbeeld één rij per student per studiejaar — dan herkent de app dat meestal zelf en zet de vraag *"Heeft elke entiteit meerdere rijen over de tijd?"* op **Ja**. De app kiest dan de **PAR-synthesizer**, die de volgorde per entiteit behoudt, en vult de **sequence key** (ID per entiteit) en **sequence index** (tijdkolom) vast in. Controleer die twee en pas ze aan waar nodig. PAR-training is zwaarder dan de standaardsynthesizer en kan enkele minuten duren.

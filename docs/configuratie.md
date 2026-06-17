@@ -45,7 +45,12 @@ Zonder `--schema` detecteert de CLI kolomtypes automatisch, net als de app.
 
 ### Cross-kolom constraints
 
-SDV bewaakt per kolom al de range en het type, maar leidt geen logische verbanden _tussen_ kolommen af. Via een optioneel `constraints`-blok in het schema dwing je die af tijdens de synthese (geen correctie achteraf). Beschikbaar in de CLI/batch; een schema-loze variant in de app volgt nog.
+SDV bewaakt per kolom al de range en het type, maar leidt geen logische verbanden _tussen_ kolommen af. Die dwing je af tijdens de synthese (geen correctie achteraf), op twee manieren:
+
+- **In de app** — bij stap 2 (Genereren) onder **Logische regels (optioneel)**: kies via dropdowns een volgorde tussen twee kolommen (≤, <, ≥, >) of selecteer kolommen die alleen in bestaande combinaties mogen voorkomen. Geen YAML nodig.
+- **In de CLI/batch** — via een optioneel `constraints`-blok in het schema.
+
+Beide paden vertalen naar dezelfde SDV-constraints. Het schema-blok ziet er zo uit:
 
 ```yaml
 constraints:
@@ -74,7 +79,7 @@ In de **app** is een schema niet nodig: zodra je een kolom op `Datum` zet, detec
 
 SDV houdt numerieke waarden automatisch binnen de range van je trainingsdata en respecteert gehele getallen (geen `1,2` aanmeldingen) — dit staat standaard aan. Categorische kolommen kunnen per definitie geen waarde buiten de bestaande categorieën krijgen.
 
-Cross-kolom-logica zoals `inschrijvingsjaar ≤ uitschrijvingsjaar` of geldige categorie-combinaties dwing je af via [cross-kolom constraints](#cross-kolom-constraints) in het schema (CLI/batch). Een vast domein strakker dan de data staat nog op de roadmap.
+Cross-kolom-logica zoals `inschrijvingsjaar ≤ uitschrijvingsjaar` of geldige categorie-combinaties dwing je af via [cross-kolom constraints](#cross-kolom-constraints) — in de app (Logische regels) of in het schema (CLI/batch). Een vast domein strakker dan de data staat nog op de roadmap.
 
 ### Reproduceerbaarheid (`--seed`)
 
