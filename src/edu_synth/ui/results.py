@@ -64,6 +64,34 @@ def _scorecard(col, label: str, verdict: str, risk: str) -> None:
     col.metric(label, f"{_RISK_ICON.get(risk, '○')} {verdict}")
 
 
+_VERDICT_TEXT = {
+    "laag": (
+        "Deze synthetische dataset vertoont een **hoge statistische gelijkenis** met de echte data."
+    ),
+    "matig": (
+        "Deze synthetische dataset is **bruikbaar met voorbehoud**. "
+        "Controleer de details in het validatierapport voor gebruik."
+    ),
+    "hoog": (
+        "Deze synthetische dataset wijkt **sterk af van de echte data**. "
+        "Bekijk de details en pas de syntheseinstellingen aan."
+    ),
+}
+
+
+def _render_verdict_banner(verdict: dict, recommendation: str) -> None:
+    """Toon het overall bruikbaarheidsoordeel als gekleurde banner vóór de tabs.
+
+    Staat boven de tabs zodat ook wie direct naar Download gaat het oordeel ziet.
+    """
+    brk_risk = verdict["brk_risk"]
+    icon = _RISK_ICON.get(brk_risk, "○")
+    msg_fn = _RISK_MSG.get(brk_risk, st.info)
+    msg_fn(f"**{icon} Oordeel: {verdict['brk_label']}** — {_VERDICT_TEXT.get(brk_risk, '')}")
+    st.caption(f"**Gebruik:** {recommendation}")
+    st.caption(f"ℹ️ {RECOMMENDATION_DISCLAIMER}")
+
+
 # ── Download-dialog ────────────────────────────────────────────────────────────
 _GEBRUIK_OPTIES = [
     "Selecteer beoogd gebruik…",
@@ -140,11 +168,13 @@ def render(
         "brk_risk": brk_risk,
     }
 
+    _render_verdict_banner(verdict, recommendation)
+
     tab_val, tab_dist, tab_dl = st.tabs(
         ["Validatierapport", "Distributies", "Download & Reproductie"]
     )
     with tab_val:
-        _render_validation(report, priv, verdict, recommendation, pairs, primary_key, sdm)
+        _render_validation(report, priv, verdict, pairs, primary_key, sdm)
     with tab_dist:
         _render_distributions(df, synth, report)
     with tab_dl:
@@ -173,35 +203,16 @@ def _render_validation(
     report: Report,
     priv,
     verdict: dict,
-    recommendation: str,
     pairs: PairsReport,
     primary_key: str | None,
     sdm: SDMetricsReport,
 ) -> None:
+    # Het overall oordeel + recommendation staat al in de banner vóór de tabs;
+    # hier tonen we de drie deeloordelen als breakdown.
     c1, c2, c3 = st.columns(3)
     _scorecard(c1, "Verdeling", verdict["verd_label"], verdict["verd_risk"])
     _scorecard(c2, "Privacy", verdict["priv_label"], verdict["priv_risk"])
     _scorecard(c3, "Bruikbaarheid", verdict["brk_label"], verdict["brk_risk"])
-
-    brk_risk = verdict["brk_risk"]
-    _VERDICT_TEXT = {
-        "laag": (
-            "Deze synthetische dataset vertoont een **hoge statistische gelijkenis** "
-            "met de echte data."
-        ),
-        "matig": (
-            "Deze synthetische dataset is **bruikbaar met voorbehoud**. "
-            "Controleer de details hieronder voor gebruik."
-        ),
-        "hoog": (
-            "Deze synthetische dataset wijkt **sterk af van de echte data**. "
-            "Bekijk de details en pas de syntheseinstellingen aan."
-        ),
-    }
-    msg_fn = _RISK_MSG.get(brk_risk, st.info)
-    msg_fn(_VERDICT_TEXT.get(brk_risk, ""))
-    st.caption(f"**Gebruik:** {recommendation}")
-    st.caption(f"ℹ️ {RECOMMENDATION_DISCLAIMER}")
 
     st.divider()
 
@@ -463,6 +474,12 @@ def _render_download(
     import sdv as _sdv
 
     sdv_version = _sdv.__version__
+
+    if verdict["brk_risk"] == "hoog":
+        st.error(
+            "❌ **Niet aanbevolen om te downloaden.** Deze dataset scoort hoog risico "
+            "op verdeling of privacy — controleer het validatierapport vóór gebruik."
+        )
 
     csv_bytes = synth.to_csv(index=False).encode("utf-8")
     if st.button("Download synthetische data", use_container_width=True, type="primary"):

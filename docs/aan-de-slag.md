@@ -42,6 +42,8 @@ Onder **Geavanceerd — reproduceerbaarheid** stel je een **random seed** in (st
 
 ### Stap 4 — Validatierapport bekijken
 
+Boven de tabbladen verschijnt een gekleurde **oordeel-banner** (groen/oranje/rood) met het overall oordeel — Hoge bruikbaarheid, Bruikbaar met voorbehoud of Niet aanbevolen — en een advieszin. Zo zie je het oordeel ook als je direct naar het Download-tabblad gaat. Bij hoog risico staat er een extra waarschuwing bij de downloadknop.
+
 De app toont per kolom:
 
 - **TV-afstand** (categorisch) — hoe goed kloppen de verhoudingen? Onder `0.2` is groen.
