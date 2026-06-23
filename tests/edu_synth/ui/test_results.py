@@ -36,6 +36,31 @@ def test_build_code_omits_seed_when_none():
     assert "np.random.seed" not in code
 
 
+def test_build_code_includes_numerical_distributions():
+    code = _build_code(
+        col_types={"gain": "numerical"},
+        primary_key=None,
+        modality="single_table",
+        demo_name=None,
+        n_generated=100,
+        numerical_distributions={"gain": "gaussian_kde"},
+    )
+    assert "numerical_distributions={'gain': 'gaussian_kde'}" in code
+
+
+def test_build_code_omits_distributions_when_empty():
+    code = _build_code(
+        col_types={"gain": "numerical"},
+        primary_key=None,
+        modality="single_table",
+        demo_name=None,
+        n_generated=100,
+        numerical_distributions={},
+    )
+    assert "numerical_distributions" not in code
+    assert "GaussianCopulaSynthesizer(metadata)" in code
+
+
 # ── _summarize_metadata (#22) ─────────────────────────────────────────────────
 def test_summarize_metadata_counts_types_and_pii():
     meta = {

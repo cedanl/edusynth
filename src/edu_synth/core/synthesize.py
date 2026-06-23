@@ -158,7 +158,50 @@ def detect_datetime_format(series: pd.Series) -> str | None:
     return _detect_date_format(series.dropna().head(20).tolist())
 
 
-# ── Synthese ───────────────────────────────────────────────────────────────────
+# ── Per-kolom distributie-aanbeveling ────────────────────────────────────────────
+# GaussianCopula modelleert elke numerieke kolom met een marginale verdeling. De
+# default 'norm' faalt hard op scheve of zero-inflated kolommen (bv. capital-gain:
+# 92% nullen): de gefitte normaal trekt dan onmogelijke waarden en de afstand tot
+# de echte data loopt op. 'gaussian_kde' volgt de empirische vorm en lost dat op,
+# tegen wat extra rekentijd. We zetten KDE daarom gericht op de kolommen die het
+# nodig hebben — globaal toepassen is traag en geheugenintensief.
+_KDE = "gaussian_kde"
+_SKEW_THRESHOLD = 2.0  # |scheefheid| hierboven → een marginale normaal past slecht
+_MODE_FREQ_THRESHOLD = 0.5  # één waarde domineert → zero-inflated/multimodaal
+_MIN_UNIQUE_FOR_KDE = 20  # te weinig unieke waarden → feitelijk discreet, KDE zinloos
+
+# SDV-GaussianCopula marginale verdelingen, in oplopende complexiteit.
+DISTRIBUTION_CHOICES: list[str] = ["norm", "beta", "truncnorm", "uniform", "gamma", _KDE]
+
+
+def is_skewed(series: pd.Series) -> bool:
+    """Is *series* zo scheef/zero-inflated dat een marginale normaal slecht past?
+
+    True bij hoge absolute scheefheid óf wanneer één waarde de kolom domineert,
+    mits er genoeg unieke waarden zijn om KDE zinvol te maken (anders is de kolom
+    feitelijk discreet/categorisch).
+    """
+    s = series.dropna()
+    if s.nunique() < _MIN_UNIQUE_FOR_KDE:
+        return False
+    mode_freq = float(s.value_counts(normalize=True).iloc[0])
+    return abs(float(s.skew())) >= _SKEW_THRESHOLD or mode_freq >= _MODE_FREQ_THRESHOLD
+
+
+def recommend_numerical_distributions(
+    df: pd.DataFrame, numerical_columns: list[str]
+) -> dict[str, str]:
+    """Kies per scheve/zero-inflated numerieke kolom ``gaussian_kde`` als marginale.
+
+    De overige kolommen blijven op de SDV-default ('norm') en komen niet in het
+    resultaat. ``numerical_columns`` bepaalt welke kolommen als numeriek gelden,
+    zodat als categorisch getypeerde codes buiten beschouwing blijven.
+    """
+    return {
+        col: _KDE
+        for col in numerical_columns
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]) and is_skewed(df[col])
+    }
 
 
 def set_seed(seed: int) -> None:
@@ -176,6 +219,7 @@ def fit(
     data: pd.DataFrame,
     schema_path: Path | None = None,
     seed: int | None = None,
+    numerical_distributions: dict[str, str] | None = None,
 ) -> GaussianCopulaSynthesizer:
     """Train a synthesizer on *data*.
 
@@ -188,6 +232,12 @@ def fit(
     seed:
         Optional random seed. When set, makes the generated output reproducible
         for identical input data.
+    numerical_distributions:
+        Per-column marginal distribution for GaussianCopula. When ``None`` (the
+        default), skewed/zero-inflated columns are detected automatically and get
+        ``gaussian_kde``; the rest keep SDV's default. Pass an explicit dict to
+        override, or ``{}`` to disable the auto-detection entirely. A
+        ``distribution`` field per column in the YAML schema takes precedence.
 
     Returns
     -------
@@ -201,9 +251,17 @@ def fit(
         metadata = SingleTableMetadata()
         metadata.detect_from_dataframe(data)
 
+    if numerical_distributions is None:
+        num_cols = [c for c, info in metadata.columns.items() if info.get("sdtype") == "numerical"]
+        numerical_distributions = recommend_numerical_distributions(data, num_cols)
+        if schema is not None:  # expliciete schema-keuze overschrijft de aanbeveling
+            numerical_distributions = {**numerical_distributions, **_schema_distributions(schema)}
+
     if seed is not None:
         set_seed(seed)
-    synthesizer = GaussianCopulaSynthesizer(metadata)
+    synthesizer = GaussianCopulaSynthesizer(
+        metadata, numerical_distributions=numerical_distributions or None
+    )
 
     if schema is not None:
         constraints = _build_constraints(schema)
@@ -230,6 +288,15 @@ def sample(model: Any, n_rows: int) -> pd.DataFrame:
 
 def _load_schema(path: Path) -> dict:
     return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+
+
+def _schema_distributions(schema: dict) -> dict[str, str]:
+    """Lees een optioneel ``distribution``-veld per kolom uit het YAML-schema."""
+    return {
+        name: col["distribution"]
+        for name, col in schema.get("columns", {}).items()
+        if col.get("distribution")
+    }
 
 
 def _build_constraints(schema: dict) -> list:

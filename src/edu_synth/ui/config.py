@@ -17,6 +17,8 @@ class TabularConfig:
     primary_key: str | None
     n_rows: int
     seed: int = 42
+    # Per-kolom marginale verdeling (alleen niet-default entries); leeg = alles 'norm'.
+    distributions: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -68,6 +70,8 @@ def render_tabular(
         raw_pk = st.selectbox("Primaire sleutel", pk_opts)
         primary_key: str | None = None if raw_pk == "(geen)" else raw_pk
 
+    distributions = _render_distributions(df, col_types)
+
     n_rows = int(
         st.number_input("Aantal rijen", min_value=10, max_value=500_000, value=len(df), step=100)
     )
@@ -77,7 +81,62 @@ def render_tabular(
         primary_key=primary_key,
         n_rows=n_rows,
         seed=seed,
+        distributions=distributions,
     )
+
+
+def _render_distributions(df: pd.DataFrame, col_types: dict[str, str]) -> dict[str, str]:
+    """Niveau 2: marginale verdeling per numerieke kolom.
+
+    Scheve/zero-inflated kolommen krijgen automatisch ``gaussian_kde`` als default —
+    de normaalverdeling (SDV-default) faalt daar. De expander toont die keuze en laat
+    'm overschrijven. Alleen niet-default keuzes ('norm') komen in het resultaat, zodat
+    de synthesizer-aanroep minimaal blijft. De widgets renderen ook ingeklapt, dus de
+    aanbeveling werkt door zonder dat de gebruiker de expander opent.
+    """
+    from edu_synth.core.synthesize import (
+        DISTRIBUTION_CHOICES,
+        recommend_numerical_distributions,
+    )
+
+    num_cols = [c for c, t in col_types.items() if t == "numerical"]
+    if not num_cols:
+        return {}
+
+    # De scheefheid-scan is O(n) per kolom en hangt alleen van de data af. Bij een
+    # grote upload zou 'm bij elke Streamlit-rerun herberekenen merkbaar laggen, dus
+    # cachen we het resultaat per bestand en filteren we daarna op de numerieke kolommen.
+    cache = st.session_state.setdefault("_dist_cache", {})
+    file_key = st.session_state.get("_file")
+    if cache.get("file") != file_key:
+        cache["file"] = file_key
+        cache["skewed"] = recommend_numerical_distributions(df, list(df.columns))
+    recommended = {c: cache["skewed"][c] for c in num_cols if c in cache["skewed"]}
+
+    chosen: dict[str, str] = {}
+    n_rec = len(recommended)
+    with st.expander(
+        f"Verdelingen — scheve kolommen ({n_rec} aanbevolen)" if n_rec else "Verdelingen",
+        expanded=False,
+    ):
+        st.caption(
+            "Voor scheve of zero-inflated kolommen kiest de app automatisch "
+            "`gaussian_kde`, die de echte vorm beter volgt dan een normaalverdeling. "
+            "⭐ = aanbevolen. Pas hier per kolom aan."
+        )
+        grid = st.columns(3)
+        for i, col in enumerate(num_cols):
+            default = recommended.get(col, "norm")
+            label = f"{col} ⭐" if col in recommended else col
+            choice = grid[i % 3].selectbox(
+                label,
+                DISTRIBUTION_CHOICES,
+                index=DISTRIBUTION_CHOICES.index(default),
+                key=f"dist_{col}",
+            )
+            if choice != "norm":
+                chosen[col] = choice
+    return chosen
 
 
 def render_upload_sequential(df: pd.DataFrame) -> SequentialConfig | None:

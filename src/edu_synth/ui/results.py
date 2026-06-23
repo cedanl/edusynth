@@ -139,6 +139,7 @@ def render(
     synth: pd.DataFrame,
     *,
     col_types: dict[str, str] | None,
+    numerical_distributions: dict[str, str] | None = None,
     primary_key: str | None,
     modality: str | None,
     demo_name: str | None,
@@ -181,6 +182,7 @@ def render(
         _render_download(
             synth,
             col_types=col_types,
+            numerical_distributions=numerical_distributions,
             primary_key=primary_key,
             modality=modality,
             demo_name=demo_name,
@@ -453,6 +455,7 @@ def _render_download(
     synth: pd.DataFrame,
     *,
     col_types: dict[str, str] | None,
+    numerical_distributions: dict[str, str] | None = None,
     primary_key: str | None,
     modality: str | None,
     demo_name: str | None,
@@ -524,6 +527,8 @@ def _render_download(
             params["random_seed"] = random_seed
         if col_types:
             params["columns"] = col_types
+        if numerical_distributions:
+            params["numerical_distributions"] = numerical_distributions
         if primary_key:
             params["primary_key"] = primary_key
         if demo_name:
@@ -586,6 +591,7 @@ def _render_download(
                 sdv_version,
                 random_seed,
                 seq_info,
+                numerical_distributions,
             )
             st.code(py_code, language="python")
             requirements_txt = f"sdv=={sdv_version}\npandas>=2.0\npyyaml>=6.0\n"
@@ -606,6 +612,7 @@ def _build_code(
     sdv_version: str = "",
     random_seed: int | None = None,
     seq_info: dict | None = None,
+    numerical_distributions: dict[str, str] | None = None,
 ) -> str:
     version_comment = f"# sdv=={sdv_version}\n" if sdv_version else ""
     # np.random.seed() vóór fit() maakt de output reproduceerbaar (zie set_seed).
@@ -648,6 +655,10 @@ synth.to_csv("synthetisch.csv", index=False)
         f'metadata.add_column("{c}", sdtype="{t}")' for c, t in (col_types or {}).items()
     )
     pk_line = f'\nmetadata.set_primary_key("{primary_key}")' if primary_key else ""
+    # gaussian_kde e.d. op scheve kolommen — anders valt SDV terug op 'norm'.
+    dist_arg = (
+        f", numerical_distributions={numerical_distributions!r}" if numerical_distributions else ""
+    )
     return f"""\
 {version_comment}{seed_import}import pandas as pd
 from sdv.metadata import SingleTableMetadata
@@ -658,7 +669,7 @@ real = pd.read_csv("jouw_data.csv")
 metadata = SingleTableMetadata()
 {col_defs}{pk_line}
 {seed_line}
-synthesizer = GaussianCopulaSynthesizer(metadata)
+synthesizer = GaussianCopulaSynthesizer(metadata{dist_arg})
 synthesizer.fit(real)
 synth = synthesizer.sample(num_rows={n_generated})
 synth.to_csv("synthetisch.csv", index=False)

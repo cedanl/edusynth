@@ -81,6 +81,24 @@ SDV houdt numerieke waarden automatisch binnen de range van je trainingsdata en 
 
 Cross-kolom-logica zoals `inschrijvingsjaar ≤ uitschrijvingsjaar` of geldige categorie-combinaties dwing je af via [cross-kolom constraints](#cross-kolom-constraints) — in de app (Logische regels) of in het schema (CLI/batch). Een vast domein strakker dan de data staat nog op de roadmap.
 
+### Verdeling per numerieke kolom (`distribution`)
+
+GaussianCopula modelleert elke numerieke kolom met een marginale verdeling. De standaard (`norm`) past slecht op scheve of zero-inflated kolommen — denk aan een bedrag dat bij de meeste rijen 0 is met een lange staart. De gefitte normaal trekt daar onmogelijke waarden en de afstand tot de echte data loopt op.
+
+edu-synth detecteert zulke kolommen automatisch (hoge scheefheid of één dominante waarde, met genoeg unieke waarden) en zet daar `gaussian_kde` op, die de echte vorm volgt. De overige kolommen blijven op `norm`.
+
+- **In de app** — bij stap 2 onder **Verdelingen**: aanbevolen kolommen staan met ⭐ en hebben `gaussian_kde` voorgeselecteerd. Pas per kolom aan of laat staan.
+- **In de CLI/batch** — geef per kolom een `distribution` mee in het schema. Dit overschrijft de auto-detectie.
+
+```yaml
+columns:
+  capital_gain:
+    dtype: integer
+    distribution: gaussian_kde
+```
+
+Geldige waarden: `norm`, `beta`, `truncnorm`, `uniform`, `gamma`, `gaussian_kde`. `gaussian_kde` is het meest flexibel maar kost meer rekentijd en geheugen; daarom past edu-synth het gericht toe in plaats van overal.
+
 ### Reproduceerbaarheid (`--seed`)
 
 Geef `--seed <getal>` mee om reproduceerbare output te krijgen: dezelfde seed met dezelfde inputdata levert een identieke synthetische dataset.

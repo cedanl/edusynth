@@ -39,6 +39,7 @@ def _run_sequential(src: datasource.DataSource, cfg: cfg_ui.SequentialConfig) ->
             st.session_state["n_label"] = f"{cfg.n_sequences} sequenties"
             st.session_state["n_generated"] = cfg.n_sequences
             st.session_state["col_types"] = None
+            st.session_state["numerical_distributions"] = {}
             st.session_state["primary_key"] = None
             st.session_state["random_seed"] = cfg.seed
             st.session_state["modality"] = "sequential"
@@ -70,7 +71,9 @@ def _run_tabular(
     with st.spinner("Model trainen en data genereren…"):
         try:
             set_seed(cfg.seed)
-            model = GaussianCopulaSynthesizer(meta)
+            model = GaussianCopulaSynthesizer(
+                meta, numerical_distributions=cfg.distributions or None
+            )
             cag = build_constraints(constraints or [])
             if cag:
                 model.add_constraints(constraints=cag)
@@ -79,6 +82,7 @@ def _run_tabular(
             st.session_state["n_label"] = f"{cfg.n_rows:,} rijen"
             st.session_state["n_generated"] = cfg.n_rows
             st.session_state["col_types"] = cfg.col_types
+            st.session_state["numerical_distributions"] = cfg.distributions
             st.session_state["primary_key"] = cfg.primary_key
             st.session_state["random_seed"] = cfg.seed
             st.session_state["modality"] = "single_table"
@@ -213,6 +217,7 @@ results.render(
     src.df,
     st.session_state["synth"],
     col_types=st.session_state.get("col_types"),
+    numerical_distributions=st.session_state.get("numerical_distributions"),
     primary_key=st.session_state.get("primary_key"),
     modality=st.session_state.get("modality", src.modality),
     demo_name=src.demo_name,

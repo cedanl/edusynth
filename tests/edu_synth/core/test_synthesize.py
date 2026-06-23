@@ -14,11 +14,14 @@ from edu_synth.core.synthesize import (
     _build_metadata,
     _detect_date_format,
     _load_schema,
+    _schema_distributions,
     build_sequential_metadata,
     detect_datetime_format,
     fit,
     infer_column_hints,
     infer_sequence_columns,
+    is_skewed,
+    recommend_numerical_distributions,
     sample,
 )
 
@@ -105,6 +108,65 @@ def test_same_seed_gives_identical_output():
     out_a = sample(fit(data, seed=42), 100)
     out_b = sample(fit(data, seed=42), 100)
     pd.testing.assert_frame_equal(out_a, out_b)
+
+
+# ── Per-kolom distributie-aanbeveling ────────────────────────────────────────────
+
+
+def _skewed_series() -> pd.Series:
+    # Zero-inflated: 90 nullen + 30 oplopende waarden → hoge scheefheid, modefreq 0.75,
+    # genoeg unieke waarden voor KDE.
+    return pd.Series([0] * 90 + list(range(1, 31)))
+
+
+def test_is_skewed_true_for_zero_inflated():
+    assert is_skewed(_skewed_series()) is True
+
+
+def test_is_skewed_false_for_normal():
+    rng = np.random.default_rng(0)
+    assert is_skewed(pd.Series(rng.normal(50, 10, 500))) is False
+
+
+def test_is_skewed_false_for_low_cardinality():
+    # Scheef qua waardeverdeling, maar te weinig unieke waarden → feitelijk discreet.
+    assert is_skewed(pd.Series([1, 2, 3] * 40)) is False
+
+
+def test_recommend_flags_skewed_numeric_column():
+    df = pd.DataFrame({"gain": _skewed_series(), "age": np.arange(120)})
+    rec = recommend_numerical_distributions(df, ["gain", "age"])
+    assert rec == {"gain": "gaussian_kde"}
+
+
+def test_recommend_respects_numerical_typing():
+    # Een scheve kolom die níét als numeriek is opgegeven, blijft buiten beschouwing.
+    df = pd.DataFrame({"gain": _skewed_series()})
+    assert recommend_numerical_distributions(df, []) == {}
+
+
+def test_schema_distributions_reads_field():
+    schema = {
+        "columns": {"a": {"dtype": "float", "distribution": "gamma"}, "b": {"dtype": "float"}}
+    }
+    assert _schema_distributions(schema) == {"a": "gamma"}
+
+
+def test_fit_numerical_distributions_is_optional():
+    assert inspect.signature(fit).parameters["numerical_distributions"].default is None
+
+
+def test_fit_auto_applies_kde_on_skewed_column():
+    rng = np.random.default_rng(0)
+    data = pd.DataFrame({"gain": _skewed_series(), "age": rng.integers(18, 70, 120)})
+    model = fit(data, seed=42)
+    assert model.get_parameters()["numerical_distributions"].get("gain") == "gaussian_kde"
+
+
+def test_fit_explicit_empty_distributions_disables_autodetect():
+    data = pd.DataFrame({"gain": _skewed_series()})
+    model = fit(data, seed=42, numerical_distributions={})
+    assert not model.get_parameters()["numerical_distributions"]
 
 
 # ── Kolomtype-hints ────────────────────────────────────────────────────────────
