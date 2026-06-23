@@ -17,6 +17,8 @@ Gebruik:
 from __future__ import annotations
 
 import argparse
+import json
+import sys
 import warnings
 from pathlib import Path
 
@@ -41,6 +43,24 @@ DATASETS: list[str] = [
 SEED = 42
 DEFAULT_ROW_CAP = 5_000  # cap op trainings-/generatierijen zodat een run snel blijft
 DEFAULT_OUTPUT = Path("data/benchmark")  # data/ is gitignored — lokale dump
+
+# Getrackte baseline (níét in data/, dat is gitignored) — het ijkpunt voor --check.
+BASELINE_PATH = Path(__file__).parent / "benchmark_baseline.json"
+
+# Fideliteitsmetrieken die de regressietest bewaakt, met hun richting.
+# Privacy/DCR staat bewust niet in de gate: te ruisig en niet-monotoon.
+_GUARDED: dict[str, str] = {
+    "mean_score": "lower",  # lager = dichter bij echte data
+    "worst_score": "lower",
+    "cols_failed": "lower",
+    "sdmetrics_overall": "higher",  # hoger = betere kwaliteit
+}
+
+# Een verslechtering telt pas als regressie boven deze marge. Relatief (10%) vangt
+# de uiteenlopende schalen (score 0.16 vs 3.5); de absolute vloer voorkomt dat ruis
+# bij kleine waarden al triggert.
+_REL_TOL = 0.10
+_ABS_FLOOR = 0.01
 
 
 def _metadata_dict(df: pd.DataFrame) -> dict:
@@ -133,6 +153,69 @@ def _write_details(out_dir: Path, name: str, result: dict) -> None:
         pd.DataFrame(sdm.column_shapes).to_csv(ds_dir / "sdmetrics_shapes.csv", index=False)
 
 
+def _is_regression(baseline_val: float, current_val: float, direction: str) -> bool:
+    """Is *current_val* merkbaar slechter dan *baseline_val* in de gegeven richting?"""
+    if direction == "lower":  # lager is beter → een stijging boven de marge is slecht
+        return current_val > baseline_val * (1 + _REL_TOL) + _ABS_FLOOR
+    return current_val < baseline_val * (1 - _REL_TOL) - _ABS_FLOOR  # hoger is beter
+
+
+def check_against_baseline(baseline: dict, current: list[dict]) -> list[dict]:
+    """Vergelijk een verse run met de baseline en geef de regressies terug.
+
+    Retourneert per gevallen metriek een rij; een lege lijst betekent geen regressie.
+    """
+    base_by = {row["dataset"]: row for row in baseline.get("datasets", [])}
+    regressions: list[dict] = []
+    for cur in current:
+        base = base_by.get(cur["dataset"])
+        if base is None:
+            continue  # nieuwe dataset zonder ijkpunt — niets om tegen te vergelijken
+        # Stond de dataset in de baseline maar levert hij nu geen scores op, dan is de
+        # run gecrasht — dat is óók een regressie, geen stille pass.
+        if not any(m in cur for m in _GUARDED):
+            regressions.append(
+                {
+                    "dataset": cur["dataset"],
+                    "metric": "(run mislukt)",
+                    "baseline": "ok",
+                    "current": cur.get("worst_col", "ERR"),
+                    "direction": "—",
+                }
+            )
+            continue
+        for metric, direction in _GUARDED.items():
+            b, c = base.get(metric), cur.get(metric)
+            if b is None or c is None:
+                continue
+            if _is_regression(b, c, direction):
+                regressions.append(
+                    {
+                        "dataset": cur["dataset"],
+                        "metric": metric,
+                        "baseline": b,
+                        "current": c,
+                        "direction": direction,
+                    }
+                )
+    return regressions
+
+
+def _write_baseline(path: Path, summaries: list[dict], seed: int, row_cap: int) -> None:
+    """Leg de huidige scores vast als ijkpunt, met versie-info voor traceerbaarheid."""
+    import sdmetrics
+    import sdv
+
+    payload = {
+        "seed": seed,
+        "row_cap": row_cap,
+        "sdv_version": sdv.__version__,
+        "sdmetrics_version": sdmetrics.__version__,
+        "datasets": summaries,
+    }
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -146,6 +229,17 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=SEED, help="Random seed (vast → herhaalbaar).")
     parser.add_argument(
         "--output-dir", type=Path, default=DEFAULT_OUTPUT, help="Map voor de CSV-dump."
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help=f"Schrijf de scores als nieuw ijkpunt naar {BASELINE_PATH.name}.",
+    )
+    mode.add_argument(
+        "--check",
+        action="store_true",
+        help="Vergelijk met de baseline; exit 1 bij een regressie boven de marge.",
     )
     args = parser.parse_args()
 
@@ -175,6 +269,23 @@ def main() -> None:
 
     print("\n" + table)
     print(f"\nCSV's en summary.md geschreven naar {args.output_dir}/")
+
+    if args.update_baseline:
+        _write_baseline(BASELINE_PATH, summaries, args.seed, args.rows)
+        print(f"Baseline bijgewerkt: {BASELINE_PATH}")
+        return
+
+    if args.check:
+        if not BASELINE_PATH.exists():
+            print(f"\nGeen baseline gevonden ({BASELINE_PATH}). Draai eerst --update-baseline.")
+            sys.exit(2)
+        baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+        regressions = check_against_baseline(baseline, summaries)
+        if regressions:
+            print("\n✗ Regressie t.o.v. baseline:")
+            print(_markdown_table(regressions))
+            sys.exit(1)
+        print("\n✓ Geen regressie t.o.v. baseline.")
 
 
 if __name__ == "__main__":

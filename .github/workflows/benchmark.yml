@@ -1,0 +1,30 @@
+name: Benchmark
+
+# Aparte, niet-blokkerende run: bewaakt synthesekwaliteit tegen de vastgelegde
+# baseline (scripts/benchmark_baseline.json). Draait niet bij elke PR — een verse
+# run downloadt demo-data en traint modellen, te zwaar voor de snelle CI.
+# Her-ijken na een bewuste verbetering: `uv run scripts/benchmark.py --update-baseline`.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # elke maandag 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12.7
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Regressiecheck tegen baseline
+        run: uv run scripts/benchmark.py --check
