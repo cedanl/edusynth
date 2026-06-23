@@ -118,6 +118,28 @@ def test_constant_column_does_not_crash():
     assert report.rows[0]["ok"] is True
 
 
+def test_boolean_column_treated_as_categorical():
+    # Regressie: bool telt bij pandas als numeriek, maar de IQR-berekening crasht
+    # erop. Een ja/nee-kolom hoort daarom via TV-afstand vergeleken te worden.
+    df = pd.DataFrame({"geslaagd": [True, False, True, True, False]})
+    report = evaluate(df, df.copy())
+    assert report.rows[0]["metric"] == "tv"
+    assert report.rows[0]["score"] == 0.0
+
+
+def test_dtype_divergence_does_not_crash():
+    # Regressie: SDV kan een int-kolom anonimiseren naar tekst (bv. stadscodes →
+    # stadsnamen). De kolom is dan numeriek in echt, tekst in synthetisch — dat
+    # mag niet crashen, maar terugvallen op de TV-afstand.
+    real = pd.DataFrame({"stad": [1001, 1002, 1003, 1001, 1002]})
+    synth = pd.DataFrame({"stad": ["Lisaville", "Port X", "Lisaville", "Port X", "Lisaville"]})
+    report = evaluate(real, synth)
+    assert report.rows[0]["metric"] == "tv"
+    # Ook pairs en privacy mogen niet crashen op de gedivergeerde kolom.
+    assert evaluate_pairs(real, synth).available is False  # < 2 numerieke kolommen
+    assert isinstance(evaluate_privacy(real, synth), PrivacyReport)
+
+
 def test_spread_fallback_chain():
     assert _spread(pd.Series([1, 2, 3, 4, 5])) > 0  # IQR
     assert _spread(pd.Series([5, 5, 5, 5, 5])) == 1.0  # constante kolom → 1.0
