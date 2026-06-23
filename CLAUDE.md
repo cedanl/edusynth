@@ -104,6 +104,12 @@ uv run scripts/download_datasets.py
 # Benchmark synthesekwaliteit over vaste SDV-demo-datasets (reproduceerbare meetlat)
 uv run scripts/benchmark.py
 
+# Regressiecheck tegen het vastgelegde ijkpunt (exit 1 bij verslechtering)
+uv run scripts/benchmark.py --check
+
+# Ijkpunt her-ijken na een bewuste kwaliteitsverbetering
+uv run scripts/benchmark.py --update-baseline
+
 # Documentatie lokaal
 uv run mkdocs serve
 ```
