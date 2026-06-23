@@ -8,15 +8,15 @@
       "dataset": "student_placements",
       "rows": 215,
       "cols": 16,
-      "worst_col": "end_date",
-      "worst_score": 0.8053,
-      "mean_score": 0.1667,
+      "worst_col": "start_date",
+      "worst_score": 0.7069,
+      "mean_score": 0.1426,
       "cols_failed": 3,
-      "corr_flagged": 7,
-      "corr_max_delta": 0.341,
-      "sdmetrics_overall": 0.7927,
+      "corr_flagged": 9,
+      "corr_max_delta": 0.312,
+      "sdmetrics_overall": 0.8098,
       "privacy_risk": "laag",
-      "dcr_ratio": 0.911
+      "dcr_ratio": 0.986
     },
     {
       "dataset": "fake_hotel_guests",
@@ -36,15 +36,15 @@
       "dataset": "adult",
       "rows": 5000,
       "cols": 15,
-      "worst_col": "capital-gain",
-      "worst_score": 4.0306,
-      "mean_score": 0.3656,
-      "cols_failed": 4,
+      "worst_col": "hours-per-week",
+      "worst_score": 0.725,
+      "mean_score": 0.0927,
+      "cols_failed": 2,
       "corr_flagged": 0,
       "corr_max_delta": 0.0,
-      "sdmetrics_overall": 0.8289,
+      "sdmetrics_overall": 0.8406,
       "privacy_risk": "laag",
-      "dcr_ratio": 2.335
+      "dcr_ratio": 2.166
     },
     {
       "dataset": "expedia_hotel_logs",
@@ -52,13 +52,13 @@
       "cols": 21,
       "worst_col": "user_location_city",
       "worst_score": 1.0,
-      "mean_score": 0.2758,
+      "mean_score": 0.2665,
       "cols_failed": 8,
       "corr_flagged": 56,
-      "corr_max_delta": 0.598,
-      "sdmetrics_overall": 0.7589,
+      "corr_max_delta": 0.54,
+      "sdmetrics_overall": 0.7694,
       "privacy_risk": "laag",
-      "dcr_ratio": 4.847
+      "dcr_ratio": 4.689
     }
   ]
 }

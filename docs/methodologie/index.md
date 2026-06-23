@@ -13,6 +13,18 @@ Voor enkelvoudige tabellen gebruikt edu-synth SDV's `GaussianCopulaSynthesizer`:
 
 Dit model is stabiel, snel en goed interpreteerbaar — ideaal voor enkelvoudige onderwijstabellen.
 
+### Marginale verdeling per kolom
+
+Stap 1 (transformatie) gaat uit van een marginale verdeling per numerieke kolom. De standaard is een normaalverdeling. Die past slecht op **scheve of zero-inflated kolommen** — bijvoorbeeld een bedrag dat bij de meeste rijen 0 is met een lange staart. De gefitte normaal trekt dan onmogelijke waarden en de kolom scoort slecht in de validatie.
+
+edu-synth detecteert zulke kolommen automatisch (hoge scheefheid of één dominante waarde, mits genoeg unieke waarden) en zet daar `gaussian_kde` op. KDE volgt de empirische vorm in plaats van een vaste aanname, wat de afstand tot de echte data fors verkleint. Op de benchmark-demodataset `adult` daalt de slechtst scorende kolom (`capital-gain`, 92 % nullen) van een afstand ~4,0 naar ~0,1.
+
+KDE kost meer rekentijd en geheugen, dus edu-synth past het **gericht** toe op de kolommen die het nodig hebben — niet globaal. Je kunt de keuze per kolom overschrijven; zie [Configuratie › Verdeling per numerieke kolom](../configuratie.md#verdeling-per-numerieke-kolom-distribution).
+
+### Waarom geen CTGAN/TVAE?
+
+SDV biedt ook neurale synthesizers (CTGAN, TVAE). Gemeten tegen de benchmark-harness scoorden die op deze datasets **slechter** dan Gaussian Copula, terwijl ze fors trager zijn en een zware afhankelijkheid (PyTorch) meebrengen. Voor de typische onderwijstabel weegt dat niet op; gerichte distributie-tuning levert de winst zonder die kosten.
+
 ## Wanneer werkt het goed?
 
 - Enkelvoudige tabellen met > 500 rijen
