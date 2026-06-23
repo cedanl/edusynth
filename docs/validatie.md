@@ -26,6 +26,8 @@ Meet de gemiddelde verschuiving tussen de twee verdelingen. De ruwe Wasserstein-
 
 Het rapport toont de score als primaire waarde en de ruwe Wasserstein-afstand ernaast.
 
+Ja/nee-kolommen (booleaans) worden als categorisch behandeld en via de TV-afstand vergeleken, niet via Wasserstein.
+
 ## Geavanceerde kwaliteitsscore (sdmetrics)
 
 De TV- en Wasserstein-scores zijn een snelle vuistregel. Voor een **uitgebreider** oordeel toont de app onder _Geavanceerde kwaliteitsscore (sdmetrics)_ ook de officiële [sdmetrics](https://docs.sdv.dev/sdmetrics) `QualityReport`:

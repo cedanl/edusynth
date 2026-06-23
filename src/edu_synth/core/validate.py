@@ -8,6 +8,17 @@ import numpy as np
 import pandas as pd
 from scipy.stats import wasserstein_distance
 
+
+def _is_numeric(series: pd.Series) -> bool:
+    """Echt numeriek: een getalkolom, maar geen boolean.
+
+    pandas rekent ``bool`` tot de numerieke dtypes, maar een ja/nee-kolom hoort
+    als categorie vergeleken te worden (TV-afstand), niet via Wasserstein — anders
+    crasht de IQR-berekening op booleans (``numpy boolean subtract``).
+    """
+    return pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series)
+
+
 # ── Statistische validatie ─────────────────────────────────────────────────────
 
 
@@ -82,7 +93,11 @@ def evaluate(real: pd.DataFrame, synth: pd.DataFrame) -> Report:
         if r.empty or s.empty:
             continue
 
-        if pd.api.types.is_numeric_dtype(real[col]):
+        # Kies het numerieke pad alleen als de kolom in zowel echt als synthetisch
+        # numeriek is. SDV kan een kolom onderweg omzetten (bv. een int-stadscode
+        # die het anonimiseert naar stadsnamen) — dan zou Wasserstein op strings
+        # crashen. In dat geval valt de kolom terug op de TV-afstand.
+        if _is_numeric(real[col]) and _is_numeric(s):
             dist = float(wasserstein_distance(r.to_numpy(float), s.to_numpy(float)))
             score = dist / _spread(r)
             row: dict = {
@@ -210,7 +225,9 @@ def evaluate_privacy(
     if primary_key and primary_key in shared:
         shared.remove(primary_key)
 
-    numeric_cols = [c for c in shared if pd.api.types.is_numeric_dtype(real[c])]
+    # Numeriek alleen als de kolom in beide tabellen numeriek is; anders crasht de
+    # MinMaxScaler op tekst (zie _is_numeric). De rest gaat one-hot als categorie.
+    numeric_cols = [c for c in shared if _is_numeric(real[c]) and _is_numeric(synth[c])]
     cat_candidates = [c for c in shared if c not in numeric_cols]
 
     # Identifier-/vrije-tekstkolommen (bijna uniek) zijn geen quasi-identifier en
@@ -319,8 +336,12 @@ class PairsReport:
 
 def evaluate_pairs(real: pd.DataFrame, synth: pd.DataFrame) -> PairsReport:
     """Vergelijk Pearson-correlaties tussen numerieke kolompar in echt vs. synthetisch."""
+    # Alleen kolommen die in beide tabellen numeriek zijn — een kolom die SDV naar
+    # tekst omzette zou ``.corr()`` laten crashen (zie _is_numeric).
     numeric = [
-        c for c in real.columns if pd.api.types.is_numeric_dtype(real[c]) and c in synth.columns
+        c
+        for c in real.columns
+        if c in synth.columns and _is_numeric(real[c]) and _is_numeric(synth[c])
     ]
     if len(numeric) < 2:
         return PairsReport(available=False, flagged=[], reason="Minder dan 2 numerieke kolommen")

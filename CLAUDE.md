@@ -101,6 +101,9 @@ uv run ruff format src tests
 # Datasets downloaden voor ontwikkeling
 uv run scripts/download_datasets.py
 
+# Benchmark synthesekwaliteit over vaste SDV-demo-datasets (reproduceerbare meetlat)
+uv run scripts/benchmark.py
+
 # Documentatie lokaal
 uv run mkdocs serve
 ```
