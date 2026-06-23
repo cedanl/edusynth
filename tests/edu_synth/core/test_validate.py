@@ -17,6 +17,7 @@ from edu_synth.core.validate import (
     evaluate_pairs,
     evaluate_privacy,
     evaluate_sdmetrics,
+    improvement_advice,
     usage_recommendation,
 )
 
@@ -541,3 +542,69 @@ def test_count_modes_with_nan():
     series = pd.Series([1.0, np.nan, 2.0, np.nan, 1.0, 2.0] * 10)
     modes = _count_modes(series)
     assert modes >= 1
+
+
+# ── Verbeteradvies (#31) ─────────────────────────────────────────────────────────
+
+
+def _failing_row(col: str, dtype: str = "categorical") -> dict:
+    return {
+        "column": col,
+        "dtype": dtype,
+        "distance": 0.5,
+        "score": 0.5,
+        "metric": "tv",
+        "ok": False,
+    }
+
+
+def test_advice_empty_when_all_ok():
+    report = Report(rows=[{"column": "a", "dtype": "categorical", "score": 0.05, "ok": True}])
+    df = pd.DataFrame({"a": ["x", "y"] * 300})
+    assert improvement_advice(report, df) == []
+
+
+def test_advice_flags_mistyped_column():
+    # Integer-code (1..12) die SDV als numeriek ziet maar categorisch hoort te zijn.
+    df = pd.DataFrame({"opl_vorm": list(range(1, 13)) * 50})
+    report = Report(rows=[_failing_row("opl_vorm", dtype="numeric")])
+    advice = improvement_advice(report, df)
+    assert any("opl_vorm" in a and "categorisch" in a for a in advice)
+
+
+def test_advice_flags_multimodal_column():
+    df = pd.DataFrame({"score": list(range(600))})
+    report = Report(
+        rows=[_failing_row("score", dtype="numeric")],
+        modal_flags=[{"column": "score", "real_modes": 2, "synth_modes": 1}],
+    )
+    advice = improvement_advice(report, df)
+    assert any("score" in a and "gaussian_kde" in a for a in advice)
+
+
+def test_advice_flags_high_cardinality():
+    df = pd.DataFrame({"stad": [f"plaats_{i}" for i in range(600)]})
+    report = Report(rows=[_failing_row("stad", dtype="categorical")])
+    advice = improvement_advice(report, df)
+    assert any("stad" in a and "unieke waarden" in a for a in advice)
+
+
+def test_advice_warns_small_dataset():
+    df = pd.DataFrame({"a": ["x", "y"] * 50})  # 100 rijen < 500
+    report = Report(rows=[{"column": "a", "dtype": "categorical", "score": 0.05, "ok": True}])
+    advice = improvement_advice(report, df)
+    assert any("klein" in a for a in advice)
+
+
+def test_advice_privacy_risk_comes_first():
+    df = pd.DataFrame({"a": ["x", "y"] * 300})
+    report = Report(rows=[_failing_row("a")])
+    priv = PrivacyReport(available=True, risk_level="hoog")
+    advice = improvement_advice(report, df, priv)
+    assert "Privacy" in advice[0]
+
+
+def test_advice_capped_at_max():
+    df = pd.DataFrame({f"c{i}": [f"v_{j}" for j in range(600)] for i in range(8)})
+    report = Report(rows=[_failing_row(f"c{i}", dtype="categorical") for i in range(8)])
+    assert len(improvement_advice(report, df)) <= 4
