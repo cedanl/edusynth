@@ -73,52 +73,84 @@ def _count_modes(series: pd.Series) -> int:
 _SCORE_OK = 0.2
 
 
-def evaluate(real: pd.DataFrame, synth: pd.DataFrame) -> Report:
+def _as_timestamp(series: pd.Series, fmt: str | None) -> pd.Series:
+    """Datumkolom naar nanoseconden sinds epoch, zodat Wasserstein erop werkt.
+
+    Onparseerbare waarden worden NaT en vallen weg. Het ns-getal is groot, maar de
+    score normaliseert op de IQR (ook in ns), dus schaalvrij.
+    """
+    dt = (
+        pd.to_datetime(series, format=fmt, errors="coerce")
+        if fmt
+        else pd.to_datetime(series, errors="coerce")
+    )
+    return dt.dropna().astype("int64")
+
+
+def evaluate(real: pd.DataFrame, synth: pd.DataFrame, metadata: dict | None = None) -> Report:
     """Vergelijk *real* en *synth* kolom voor kolom.
 
     Categorisch → Total Variation afstand [0, 1]
     Numeriek    → Wasserstein-1 afstand, genormaliseerd op de IQR van de echte kolom
+    Datum       → naar timestamp, daarna als numeriek (zie *metadata*)
 
     Elke rij krijgt een `score`: TV-afstand (categorisch) of genormaliseerde
     Wasserstein (numeriek). Doordat beide op dezelfde schaal liggen, telt elke
     kolom even zwaar mee in het eindoordeel — een `distance` van 0.3 voor een
     jaarveld is niet langer onvergelijkbaar met 0.3 voor een EC-score.
+
+    *metadata* is de SDV-metadata-dict. Zonder metadata wordt het type uit de
+    pandas-dtype afgeleid (oud gedrag). Mét metadata worden datumkolommen via het
+    Wasserstein-pad gescoord (niet als hoog-cardinale categorie, wat vals alarm
+    gaf) en worden id-kolommen overgeslagen — een id heeft geen verdeling om te
+    bewaren.
     """
+    columns_meta = (metadata or {}).get("columns", {})
     rows = []
     modal_flags = []
     shared = set(real.columns) & set(synth.columns)
 
     for col in shared:
+        sdtype = columns_meta.get(col, {}).get("sdtype")
+        if sdtype == "id":
+            continue
+
         r, s = real[col].dropna(), synth[col].dropna()
         if r.empty or s.empty:
             continue
 
-        # Kies het numerieke pad alleen als de kolom in zowel echt als synthetisch
-        # numeriek is. SDV kan een kolom onderweg omzetten (bv. een int-stadscode
-        # die het anonimiseert naar stadsnamen) — dan zou Wasserstein op strings
-        # crashen. In dat geval valt de kolom terug op de TV-afstand.
-        if _is_numeric(real[col]) and _is_numeric(s):
+        is_datetime = sdtype == "datetime"
+        if is_datetime:
+            fmt = columns_meta.get(col, {}).get("datetime_format")
+            r, s = _as_timestamp(r, fmt), _as_timestamp(s, fmt)
+            if r.empty or s.empty:
+                continue
+
+        # Numeriek pad alleen als de kolom in zowel echt als synthetisch numeriek
+        # is (datums zijn na conversie int64). SDV kan een kolom onderweg omzetten
+        # (bv. int-stadscode → stadsnamen) — dan zou Wasserstein op strings crashen
+        # en valt de kolom terug op de TV-afstand.
+        if is_datetime or (_is_numeric(real[col]) and _is_numeric(s)):
             dist = float(wasserstein_distance(r.to_numpy(float), s.to_numpy(float)))
             score = dist / _spread(r)
             row: dict = {
                 "column": col,
-                "dtype": "numeric",
+                "dtype": "datetime" if is_datetime else "numeric",
                 "distance": round(dist, 4),
                 "score": round(score, 4),
                 "metric": "wasserstein",
                 "ok": score < _SCORE_OK,
             }
-            r_modes = _count_modes(r)
-            s_modes = _count_modes(s)
-            if r_modes >= 2 and s_modes < r_modes:
-                row["modal_warning"] = f"{r_modes} pieken → {s_modes} pieken"
-                modal_flags.append(
-                    {
-                        "column": col,
-                        "real_modes": r_modes,
-                        "synth_modes": s_modes,
-                    }
-                )
+            # Multimodaliteit is een vorm-signaal voor echte meetwaarden; op
+            # timestamps niet zinvol, dus alleen voor niet-datum numeriek.
+            if not is_datetime:
+                r_modes = _count_modes(r)
+                s_modes = _count_modes(s)
+                if r_modes >= 2 and s_modes < r_modes:
+                    row["modal_warning"] = f"{r_modes} pieken → {s_modes} pieken"
+                    modal_flags.append(
+                        {"column": col, "real_modes": r_modes, "synth_modes": s_modes}
+                    )
             rows.append(row)
         else:
             dist = _tv_distance(r, s)
@@ -557,13 +589,22 @@ _MAX_ADVICE = 4  # niet overladen; alleen de belangrijkste punten
 
 
 def improvement_advice(
-    report: Report, real: pd.DataFrame, priv: PrivacyReport | None = None
+    report: Report,
+    real: pd.DataFrame,
+    priv: PrivacyReport | None = None,
+    numerical_distributions: dict[str, str] | None = None,
+    pairs: PairsReport | None = None,
 ) -> list[str]:
     """Geef concrete verbeteradviezen, gericht op de slechtst scorende kolommen.
 
     Leeg bij goede kwaliteit. Elk advies koppelt een gemeten signaal (verkeerd
-    kolomtype, verloren pieken, hoge cardinaliteit, te weinig rijen, privacyrisico)
-    aan een actie in de app. Markdown-opmaak, bedoeld als bulletlijst.
+    kolomtype, verloren pieken, hoge cardinaliteit, te weinig rijen, privacyrisico,
+    omgeklapte correlatie) aan een actie in de app. Markdown-opmaak, bedoeld als
+    bulletlijst.
+
+    *numerical_distributions* is de actieve per-kolom verdeling, zodat een advies
+    niet aanraadt wat al aanstaat (bv. ``gaussian_kde``). *pairs* voegt advies toe
+    over afwijkende verbanden tussen kolommen.
     """
     from edu_synth.core.synthesize import infer_column_hints
 
@@ -595,15 +636,33 @@ def improvement_advice(
                 "aan onder *Kolomtypes aanpassen*."
             )
         elif col in modal_cols:
-            advice.append(
-                f"**{col}** heeft meerdere pieken die in de synthese vervlakken. Probeer een "
-                "andere verdeling (bijv. *gaussian_kde*) onder *Verdelingen*."
-            )
+            if (numerical_distributions or {}).get(col) == "gaussian_kde":
+                advice.append(
+                    f"**{col}** is multimodaal en vervlakt ondanks de al actieve "
+                    "*gaussian_kde*-verdeling. Met weinig rijen blijft dit lastig — meer data "
+                    "helpt, of accepteer de afwijking."
+                )
+            else:
+                advice.append(
+                    f"**{col}** heeft meerdere pieken die in de synthese vervlakken. Probeer een "
+                    "andere verdeling (bijv. *gaussian_kde*) onder *Verdelingen*."
+                )
         elif r["dtype"] == "categorical" and real[col].nunique() > _HIGH_CARDINALITY:
             advice.append(
                 f"**{col}** heeft veel unieke waarden ({real[col].nunique()}). Overweeg de "
                 "kolom weg te laten of waarden te groeperen."
             )
+
+    if pairs is not None and len(advice) < _MAX_ADVICE and correlation_risk(pairs) != "laag":
+        worst = pairs.flagged[0]  # gesorteerd op delta
+        flipped = worst["real_corr"] * worst["synth_corr"] < 0
+        kind = "is omgeklapt" if flipped else "wijkt af"
+        advice.append(
+            f"Het verband tussen **{worst['col_a']}** en **{worst['col_b']}** {kind} "
+            f"(echt {worst['real_corr']:+.2f}, synthetisch {worst['synth_corr']:+.2f}). "
+            "Correlaties zijn lastig direct te sturen — controleer of je analyses op dit "
+            "verband leunen; meer trainingsdata helpt soms."
+        )
 
     if len(real) < _SMALL_DATASET and len(advice) < _MAX_ADVICE:
         advice.append(
