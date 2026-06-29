@@ -40,6 +40,22 @@ Kolomparen met een zwakke samenhang in de echte data (onder de sdmetrics-associa
 
 Deze score komt uit een breed gebruikte, gestandaardiseerde methode (sdmetrics).
 
+## Samenhang tussen kolommen
+
+Naast de verdeling per kolom controleert de app of de **verbanden tussen kolommen** behouden blijven. Direct onder de scorecards staat een vergelijking van de Pearson-correlatie tussen alle numerieke kolomparen in de echte versus de synthetische data. Paren waarbij het verschil groter is dan `0.1` worden getoond.
+
+Een **tekenomslag** is het belangrijkste signaal: een verband dat in de echte data positief is (bijv. +0.20) maar in de synthetische data negatief (bijv. −0.11) is omgeklapt. Wie op zo'n verband een analyse of model bouwt, trekt een omgekeerde conclusie. De app waarschuwt hier expliciet voor.
+
+De samenhang krijgt een eigen scorecard (**Samenhang**) en weegt mee in het eindoordeel:
+
+| Samenhang | Betekenis |
+|---|---|
+| Goed bewaard | Geen kolomparen wijken meer dan `0.1` af |
+| Enkele afwijkingen | Milde afwijkingen, geen omgeklapt verband |
+| Verband omgeklapt | Een betekenisvol verband (`\|corr\| ≥ 0.15`) is van teken gewisseld, of een delta `> 0.3` — dit verlaagt het bruikbaarheidsoordeel |
+
+Heeft de dataset minder dan twee numerieke kolommen, dan is deze controle niet berekenbaar; dat verlaagt het oordeel niet. Voor categorisch × categorisch en categorisch × numeriek dekt de sdmetrics _Column Pair Trends_ (hierboven) de samenhang aanvullend af.
+
 ## Gebruiksoordeel — een vuistregel, geen norm
 
 Boven de details toont de app een kort **gebruiksoordeel** (bijv. "Hoge statistische kwaliteit") met een bruikbaarheidsindicatie. Dit oordeel is bewust geformuleerd in termen van statistische kwaliteit en bruikbaarheid.

@@ -106,18 +106,21 @@ def test_rank_puts_columns_without_score_last():
     assert _rank_columns_by_deviation(["a", "b"], report) == ["a", "b"]
 
 
-# ── _bruikbaarheid_verdict (#18, bepaalt de banner-kleur) ────────────────────
-def test_bruikbaarheid_high_risk_when_either_high():
-    assert _bruikbaarheid_verdict("hoog", "laag")[1] == "hoog"
-    assert _bruikbaarheid_verdict("laag", "hoog")[1] == "hoog"
+# ── _bruikbaarheid_verdict (#18/#67, bepaalt de banner-kleur) ────────────────
+def test_bruikbaarheid_high_risk_when_any_high():
+    assert _bruikbaarheid_verdict("hoog", "laag", "laag")[1] == "hoog"
+    assert _bruikbaarheid_verdict("laag", "hoog", "laag")[1] == "hoog"
+    # Correlatie telt nu net zo zwaar mee: een omgeklapt verband alleen is genoeg.
+    assert _bruikbaarheid_verdict("laag", "laag", "hoog")[1] == "hoog"
 
 
 def test_bruikbaarheid_matig_on_voorbehoud_or_unknown():
-    assert _bruikbaarheid_verdict("matig", "laag")[1] == "matig"
-    assert _bruikbaarheid_verdict("laag", "onbekend")[1] == "matig"
+    assert _bruikbaarheid_verdict("matig", "laag", "laag")[1] == "matig"
+    assert _bruikbaarheid_verdict("laag", "onbekend", "laag")[1] == "matig"
+    assert _bruikbaarheid_verdict("laag", "laag", "matig")[1] == "matig"
 
 
-def test_bruikbaarheid_laag_when_both_low():
-    label, risk = _bruikbaarheid_verdict("laag", "laag")
+def test_bruikbaarheid_laag_when_all_low():
+    label, risk = _bruikbaarheid_verdict("laag", "laag", "laag")
     assert risk == "laag"
     assert label == "Hoge bruikbaarheid"

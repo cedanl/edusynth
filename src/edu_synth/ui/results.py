@@ -14,6 +14,7 @@ from edu_synth.core.validate import (
     Report,
     SDMetricsReport,
     build_validation_report,
+    correlation_risk,
     evaluate,
     evaluate_pairs,
     evaluate_privacy,
@@ -52,8 +53,22 @@ def _privacy_verdict(priv) -> tuple[str, str]:
     return labels.get(priv.risk_level, "Onbekend"), priv.risk_level
 
 
-def _bruikbaarheid_verdict(verd_risk: str, priv_risk: str) -> tuple[str, str]:
-    risks = {verd_risk, priv_risk}
+def _samenhang_verdict(pairs: PairsReport, risk: str) -> tuple[str, str]:
+    """Scorecard-label voor correlatiebehoud.
+
+    *risk* is de uitkomst van :func:`correlation_risk`. Die geeft 'laag' wanneer
+    correlatie niet berekenbaar is (< 2 numerieke kolommen), zodat het
+    bruikbaarheidsoordeel niet verlaagt — maar op de scorecard tonen we dat
+    geval expliciet als 'Niet berekend' / 'onbekend'.
+    """
+    if not pairs.available:
+        return "Niet berekend", "onbekend"
+    labels = {"laag": "Goed bewaard", "matig": "Enkele afwijkingen", "hoog": "Verband omgeklapt"}
+    return labels[risk], risk
+
+
+def _bruikbaarheid_verdict(verd_risk: str, priv_risk: str, corr_risk: str) -> tuple[str, str]:
+    risks = {verd_risk, priv_risk, corr_risk}
     if "hoog" in risks:
         return "Niet aanbevolen", "hoog"
     if "matig" in risks or "onbekend" in risks:
@@ -168,14 +183,18 @@ def render(
 
     verd_label, verd_risk = _verdeling_verdict(report)
     priv_label, priv_risk = _privacy_verdict(priv)
-    brk_label, brk_risk = _bruikbaarheid_verdict(verd_risk, priv_risk)
-    recommendation = usage_recommendation(report, priv)
+    corr_risk = correlation_risk(pairs)
+    corr_label, corr_disp_risk = _samenhang_verdict(pairs, corr_risk)
+    brk_label, brk_risk = _bruikbaarheid_verdict(verd_risk, priv_risk, corr_risk)
+    recommendation = usage_recommendation(report, priv, pairs)
 
     verdict = {
         "verd_label": verd_label,
         "verd_risk": verd_risk,
         "priv_label": priv_label,
         "priv_risk": priv_risk,
+        "corr_label": corr_label,
+        "corr_risk": corr_disp_risk,
         "brk_label": brk_label,
         "brk_risk": brk_risk,
     }
@@ -224,12 +243,16 @@ def _render_validation(
     sdm: SDMetricsReport,
 ) -> None:
     # Het overall oordeel + recommendation staat al in de banner vóór de tabs;
-    # hier tonen we de drie deeloordelen als breakdown.
-    c1, c2, c3 = st.columns(3)
+    # hier tonen we de vier deeloordelen als breakdown.
+    c1, c2, c3, c4 = st.columns(4)
     _scorecard(c1, "Verdeling", verdict["verd_label"], verdict["verd_risk"])
-    _scorecard(c2, "Privacy", verdict["priv_label"], verdict["priv_risk"])
-    _scorecard(c3, "Bruikbaarheid", verdict["brk_label"], verdict["brk_risk"])
+    _scorecard(c2, "Samenhang", verdict["corr_label"], verdict["corr_risk"])
+    _scorecard(c3, "Privacy", verdict["priv_label"], verdict["priv_risk"])
+    _scorecard(c4, "Bruikbaarheid", verdict["brk_label"], verdict["brk_risk"])
 
+    st.divider()
+
+    _render_correlations(pairs)
     st.divider()
 
     with st.expander("Statistisch detail — verdeling per kolom", expanded=False):
@@ -313,16 +336,27 @@ def _render_validation(
             "en maakt geen deel uit van de privacyberekening."
         )
 
-    with st.expander("Bivariate correlaties — verband tussen kolompar", expanded=False):
-        if not pairs.available:
-            st.info(f"Niet beschikbaar: {pairs.reason}")
-        elif len(pairs.flagged) == 0:
-            st.success("Alle kolomverbanden zijn goed bewaard (delta ≤ 0.1).")
-        else:
-            pairs_df = pd.DataFrame(pairs.flagged)
-            st.dataframe(pairs_df, use_container_width=True)
-
     _render_sdmetrics(sdm)
+
+
+def _render_correlations(pairs: PairsReport) -> None:
+    """Toon het correlatiebehoud prominent — niet weggeklikt in een expander.
+
+    Een omgeklapt verband is voor wie op samenhang analyseert het gevaarlijkste
+    signaal, dus het staat direct onder de scorecards.
+    """
+    st.markdown("**Samenhang tussen kolommen** (bivariate correlaties)")
+    if not pairs.available:
+        st.info(f"Niet beschikbaar: {pairs.reason}")
+    elif len(pairs.flagged) == 0:
+        st.success("Alle kolomverbanden zijn goed bewaard (delta ≤ 0.1).")
+    else:
+        st.warning(
+            f"{len(pairs.flagged)} verband(en) wijken af. Een tekenomslag betekent dat een "
+            "positief verband negatief is geworden (of omgekeerd) — controleer dit vóór "
+            "analyses die op samenhang tussen kolommen leunen."
+        )
+        st.dataframe(pd.DataFrame(pairs.flagged), use_container_width=True)
 
 
 def _render_sdmetrics(sdm: SDMetricsReport) -> None:
