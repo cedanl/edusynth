@@ -98,7 +98,7 @@ def run_dataset(name: str, row_cap: int, seed: int) -> dict:
     synth_eval = synth.drop(columns=id_cols)
     eval_meta = {**metadata, "columns": {c: metadata["columns"][c] for c in real_eval.columns}}
 
-    report = V.evaluate(real_eval, synth_eval)
+    report = V.evaluate(real_eval, synth_eval, eval_meta)
     pairs = V.evaluate_pairs(real_eval, synth_eval)
     sdm = V.evaluate_sdmetrics(real_eval, synth_eval, eval_meta)
     priv = V.evaluate_privacy(real_eval, synth_eval)

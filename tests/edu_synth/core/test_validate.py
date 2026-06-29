@@ -567,6 +567,30 @@ def test_evaluate_datetime_no_false_fail_on_unique_dates():
     assert evaluate(real, synth).rows[0]["metric"] == "tv"
 
 
+def test_evaluate_datetime_is_type_driven_not_name_driven():
+    # Generaliseerbaar: een ánders genoemde datumkolom met een ánder formaat loopt
+    # door hetzelfde datetime-pad. De fix mag niet op kolomnaam of formaat leunen.
+    md = {"columns": {"geboortedatum": {"sdtype": "datetime", "datetime_format": "%d-%m-%Y"}}}
+    real = pd.DataFrame(
+        {
+            "geboortedatum": [
+                d.strftime("%d-%m-%Y") for d in pd.date_range("2000-01-01", periods=40, freq="D")
+            ]
+        }
+    )
+    synth = pd.DataFrame(
+        {
+            "geboortedatum": [
+                d.strftime("%d-%m-%Y") for d in pd.date_range("2000-01-02", periods=40, freq="D")
+            ]
+        }
+    )
+    row = evaluate(real, synth, md).rows[0]
+    assert row["dtype"] == "datetime"
+    assert row["metric"] == "wasserstein"
+    assert row["ok"]  # 1 dag verschoven → klein, niet vals gezakt
+
+
 def test_evaluate_excludes_id_columns():
     md = {"columns": {"id": {"sdtype": "id"}, "x": {"sdtype": "numerical"}}}
     real = pd.DataFrame({"id": range(50), "x": range(50)})
