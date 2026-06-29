@@ -63,7 +63,9 @@ def _samenhang_verdict(pairs: PairsReport, risk: str) -> tuple[str, str]:
     """
     if not pairs.available:
         return "Niet berekend", "onbekend"
-    labels = {"laag": "Goed bewaard", "matig": "Enkele afwijkingen", "hoog": "Verband omgeklapt"}
+    # Kort gehouden zodat de scorecard ook op smalle schermen niet afkapt; de
+    # volledige uitleg staat in de sectie "Samenhang tussen kolommen".
+    labels = {"laag": "Goed", "matig": "Afwijkingen", "hoog": "Omgeklapt"}
     return labels[risk], risk
 
 
@@ -251,13 +253,13 @@ def _render_validation(
     primary_key: str | None,
     sdm: SDMetricsReport,
 ) -> None:
-    # Het overall oordeel + recommendation staat al in de banner vóór de tabs;
-    # hier tonen we de vier deeloordelen als breakdown.
-    c1, c2, c3, c4 = st.columns(4)
+    # Het overall bruikbaarheidsoordeel staat al prominent in de banner vóór de
+    # tabs; hier tonen we de drie deeloordelen die daarin samenkomen. Drie kaarten
+    # i.p.v. vier houdt de labels ook op smalle schermen (14") leesbaar.
+    c1, c2, c3 = st.columns(3)
     _scorecard(c1, "Verdeling", verdict["verd_label"], verdict["verd_risk"])
     _scorecard(c2, "Samenhang", verdict["corr_label"], verdict["corr_risk"])
     _scorecard(c3, "Privacy", verdict["priv_label"], verdict["priv_risk"])
-    _scorecard(c4, "Bruikbaarheid", verdict["brk_label"], verdict["brk_risk"])
 
     st.divider()
 
