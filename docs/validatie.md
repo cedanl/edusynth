@@ -51,21 +51,25 @@ Deze score komt uit een breed gebruikte, gestandaardiseerde methode (sdmetrics).
 
 Naast de verdeling per kolom controleert de app of de **verbanden tussen kolommen** behouden blijven. Direct onder de scorecards staat een vergelijking van de Pearson-correlatie tussen alle numerieke kolomparen in de echte versus de synthetische data. Paren waarbij het verschil groter is dan `0.1` worden getoond.
 
-Een **tekenomslag** is het belangrijkste signaal: een verband dat in de echte data positief is (bijv. +0.20) maar in de synthetische data negatief (bijv. −0.11) is omgeklapt. Wie op zo'n verband een analyse of model bouwt, trekt een omgekeerde conclusie. De app waarschuwt hier expliciet voor.
+Een **tekenomslag** is het belangrijkste signaal: een verband dat in de echte data positief is maar in de synthetische data negatief is omgeklapt. Wie op zo'n verband een analyse of model bouwt, trekt een omgekeerde conclusie. Hoe zwaar dit telt hangt af van de **sterkte van het echte verband**: een omslag tussen twee zwakke correlaties (bijv. +0.20 → −0.11) is grotendeels ruis — zeker bij weinig rijen — en mag het oordeel niet domineren.
 
 De samenhang krijgt een eigen scorecard (**Samenhang**) en weegt mee in het eindoordeel:
 
 | Samenhang | Betekenis |
 |---|---|
 | Goed bewaard | Geen kolomparen wijken meer dan `0.1` af |
-| Enkele afwijkingen | Milde afwijkingen, geen omgeklapt verband |
-| Verband omgeklapt | Een betekenisvol verband (`\|corr\| ≥ 0.15`) is van teken gewisseld, of een delta `> 0.3` — dit verlaagt het bruikbaarheidsoordeel |
+| Enkele afwijkingen | Een matig verband (`\|echt\| ≥ 0.2`) wijkt merkbaar af |
+| Verband omgeklapt | Een **sterk** verband (`\|echt\| ≥ 0.4`) is van teken gewisseld, of een verschuiving `> 0.5` |
+
+Wijkt alleen een zwak verband (`\|echt\| < 0.2`) af, dan blijft de samenhang _Goed bewaard_ — dat is ruis, geen kwaliteitsprobleem.
 
 Heeft de dataset minder dan twee numerieke kolommen, dan is deze controle niet berekenbaar; dat verlaagt het oordeel niet. Voor categorisch × categorisch en categorisch × numeriek dekt de sdmetrics _Column Pair Trends_ (hierboven) de samenhang aanvullend af.
 
 ## Gebruiksoordeel — een vuistregel, geen norm
 
 Boven de details toont de app een kort **gebruiksoordeel** (bijv. "Hoge statistische kwaliteit") met een bruikbaarheidsindicatie. Dit oordeel is bewust geformuleerd in termen van statistische kwaliteit en bruikbaarheid.
+
+Het eindoordeel combineert de drie deeloordelen (verdeling, samenhang, privacy) zónder solo-veto: één enkele zwakke dimensie verlaagt naar **Bruikbaar met voorbehoud**, niet meteen naar **Niet aanbevolen**. Een dataset die op 94% van de kolommen goed scoort wordt zo niet afgekeurd op één afwijking. **Niet aanbevolen** verschijnt alleen bij een privacy-risico (altijd zwaarwegend) of wanneer twee deeloordelen tegelijk hoog zijn.
 
 !!! note "Operationele vuistregel"
     Het oordeel is een operationele vuistregel op basis van afstandsmetrieken (TV, genormaliseerde Wasserstein), niet ontleend aan een vastgestelde norm. Beoordeel zelf of de kwaliteit volstaat voor het beoogde gebruik.

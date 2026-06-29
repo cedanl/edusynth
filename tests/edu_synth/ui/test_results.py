@@ -106,12 +106,17 @@ def test_rank_puts_columns_without_score_last():
     assert _rank_columns_by_deviation(["a", "b"], report) == ["a", "b"]
 
 
-# ── _bruikbaarheid_verdict (#18/#67, bepaalt de banner-kleur) ────────────────
-def test_bruikbaarheid_high_risk_when_any_high():
-    assert _bruikbaarheid_verdict("hoog", "laag", "laag")[1] == "hoog"
-    assert _bruikbaarheid_verdict("laag", "hoog", "laag")[1] == "hoog"
-    # Correlatie telt nu net zo zwaar mee: een omgeklapt verband alleen is genoeg.
-    assert _bruikbaarheid_verdict("laag", "laag", "hoog")[1] == "hoog"
+# ── _bruikbaarheid_verdict (#18/#67/#72, bepaalt de banner-kleur) ────────────
+def test_bruikbaarheid_niet_aanbevolen_on_privacy_or_two_high():
+    assert _bruikbaarheid_verdict("laag", "hoog", "laag")[1] == "hoog"  # privacy = veto
+    assert _bruikbaarheid_verdict("hoog", "laag", "hoog")[1] == "hoog"  # 2 dimensies hoog
+
+
+def test_bruikbaarheid_single_high_is_voorbehoud_not_veto():
+    # #72: één enkele hoog (verdeling OF correlatie) mag een verder goede dataset
+    # niet afkeuren — verlaagt naar "Bruikbaar met voorbehoud", niet "Niet aanbevolen".
+    assert _bruikbaarheid_verdict("hoog", "laag", "laag")[1] == "matig"
+    assert _bruikbaarheid_verdict("laag", "laag", "hoog")[1] == "matig"
 
 
 def test_bruikbaarheid_matig_on_voorbehoud_or_unknown():

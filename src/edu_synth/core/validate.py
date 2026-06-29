@@ -404,31 +404,46 @@ def evaluate_pairs(real: pd.DataFrame, synth: pd.DataFrame) -> PairsReport:
     )
 
 
-# Een omgeklapt verband (teken draait om op een betekenisvol verband) is de
-# zwaarste correlatiefout: wie op dat verband een analyse bouwt, trekt een
-# omgekeerde conclusie. Een grote delta zonder tekenomslag is ook ernstig; milde
-# afwijkingen blijven "matig".
-_CORR_SIGNIFICANT = 0.15  # |corr| in de echte data waaronder een tekenomslag ruis is
-_CORR_LARGE_DELTA = 0.3  # delta hierboven → ernstige afwijking, ook zonder tekenomslag
+# Een omgeklapt verband (teken draait om) is de zwaarste correlatiefout — maar
+# alleen als het echte verband ook betekenisvol is. Een omslag tussen twee zwakke
+# correlaties (bv. +0.20 → −0.11) is grotendeels ruis, zeker bij weinig rijen, en
+# mag het oordeel niet domineren. Daarom weegt de sterkte van het ECHTE verband:
+_CORR_STRONG = 0.4  # |echte corr| hierboven → een omslag/afwijking is ernstig
+_CORR_MODERATE = 0.2  # |echte corr| hierboven → matig de moeite waard
+_CORR_HUGE_DELTA = 0.5  # zo grote verschuiving dat het ook zonder omslag ernstig is
+
+
+def _pair_severity(p: dict) -> str:
+    """Ernst van één geflagd correlatiepaar, gewogen op de sterkte van het echte verband."""
+    rc, sc = p["real_corr"], p["synth_corr"]
+    flipped = rc * sc < 0
+    if (flipped and abs(rc) >= _CORR_STRONG) or p["delta"] > _CORR_HUGE_DELTA:
+        return "hoog"
+    if abs(rc) >= _CORR_MODERATE:  # een matig+ verband dat merkbaar afwijkt
+        return "matig"
+    return "laag"
 
 
 def correlation_risk(pairs: PairsReport) -> str:
     """Vertaal de geflagde correlatieparen naar 'laag' | 'matig' | 'hoog'.
 
-    - ``hoog``: een tekenomslag op een betekenisvol verband (positief wordt
-      negatief of omgekeerd) of een grote delta;
-    - ``matig``: wel geflagde paren, maar mild;
-    - ``laag``: geen geflagde paren, of correlatie niet berekenbaar (< 2
-      numerieke kolommen) — dat laatste mag het oordeel niet verlagen.
+    Het risico is de ernst van het zwaarste paar (zie :func:`_pair_severity`):
+
+    - ``hoog``: een tekenomslag op een sterk verband (``|echt| ≥ 0.4``) of een
+      zeer grote verschuiving (delta ``> 0.5``);
+    - ``matig``: een matig verband (``|echt| ≥ 0.2``) dat merkbaar afwijkt;
+    - ``laag``: alleen zwakke verbanden afwijken, geen geflagde paren, of
+      correlatie niet berekenbaar (< 2 numerieke kolommen) — dat laatste mag het
+      oordeel niet verlagen.
     """
     if not pairs.available or not pairs.flagged:
         return "laag"
-    for p in pairs.flagged:
-        rc, sc = p["real_corr"], p["synth_corr"]
-        flipped = rc * sc < 0 and abs(rc) >= _CORR_SIGNIFICANT
-        if flipped or p["delta"] > _CORR_LARGE_DELTA:
-            return "hoog"
-    return "matig"
+    severities = {_pair_severity(p) for p in pairs.flagged}
+    if "hoog" in severities:
+        return "hoog"
+    if "matig" in severities:
+        return "matig"
+    return "laag"
 
 
 # ── sdmetrics QualityReport ──────────────────────────────────────────────────────
@@ -660,8 +675,9 @@ def improvement_advice(
         advice.append(
             f"Het verband tussen **{worst['col_a']}** en **{worst['col_b']}** {kind} "
             f"(echt {worst['real_corr']:+.2f}, synthetisch {worst['synth_corr']:+.2f}). "
-            "Correlaties zijn lastig direct te sturen — controleer of je analyses op dit "
-            "verband leunen; meer trainingsdata helpt soms."
+            "Meer trainingsrijen geven stabielere verbanden; ligt er een bekende relatie "
+            "onder (bv. een vaste volgorde of een afgeleide kolom), leg die dan vast onder "
+            "*Logische regels*."
         )
 
     if len(real) < _SMALL_DATASET and len(advice) < _MAX_ADVICE:

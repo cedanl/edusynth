@@ -489,58 +489,67 @@ def test_correlation_risk_laag_when_unavailable():
     assert correlation_risk(PairsReport(available=False, flagged=[])) == "laag"
 
 
-def test_correlation_risk_hoog_on_sign_flip():
-    # Een betekenisvol positief verband wordt negatief → omgeklapt → hoog.
+def test_correlation_risk_hoog_on_strong_sign_flip():
+    # Tekenomslag op een STERK verband (|echt| ≥ 0.4) → hoog.
+    pairs = PairsReport(
+        available=True,
+        flagged=[{"col_a": "a", "col_b": "b", "real_corr": 0.5, "synth_corr": -0.3, "delta": 0.8}],
+    )
+    assert correlation_risk(pairs) == "hoog"
+
+
+def test_correlation_risk_hoog_on_huge_delta():
+    # Zeer grote verschuiving (delta > 0.5) is ook zonder tekenomslag ernstig.
+    pairs = PairsReport(
+        available=True,
+        flagged=[{"col_a": "a", "col_b": "b", "real_corr": 0.7, "synth_corr": 0.1, "delta": 0.6}],
+    )
+    assert correlation_risk(pairs) == "hoog"
+
+
+def test_correlation_risk_matig_on_moderate_flip():
+    # Omslag op een ZWAK-tot-matig verband (|echt| = 0.2, < 0.4) → matig, niet hoog.
     pairs = PairsReport(
         available=True,
         flagged=[
             {"col_a": "a", "col_b": "b", "real_corr": 0.2, "synth_corr": -0.11, "delta": 0.31}
         ],
     )
-    assert correlation_risk(pairs) == "hoog"
-
-
-def test_correlation_risk_hoog_on_large_delta():
-    # Grote delta zonder tekenomslag is ook ernstig.
-    pairs = PairsReport(
-        available=True,
-        flagged=[{"col_a": "a", "col_b": "b", "real_corr": 0.6, "synth_corr": 0.25, "delta": 0.35}],
-    )
-    assert correlation_risk(pairs) == "hoog"
-
-
-def test_correlation_risk_matig_on_mild_deviation():
-    # Wel geflagd (delta > 0.1) maar mild en geen tekenomslag.
-    pairs = PairsReport(
-        available=True,
-        flagged=[{"col_a": "a", "col_b": "b", "real_corr": 0.4, "synth_corr": 0.25, "delta": 0.15}],
-    )
     assert correlation_risk(pairs) == "matig"
 
 
-def test_correlation_risk_ignores_trivial_sign_flip():
-    # Tekenomslag op een verwaarloosbaar verband (|real_corr| < 0.15) is ruis,
-    # geen omgeklapt verband → niet 'hoog'.
+def test_correlation_risk_laag_on_trivial_correlation():
+    # Omslag op een verwaarloosbaar verband (|echt| < 0.2) is ruis → laag.
     pairs = PairsReport(
         available=True,
         flagged=[
             {"col_a": "a", "col_b": "b", "real_corr": 0.05, "synth_corr": -0.08, "delta": 0.13}
         ],
     )
-    assert correlation_risk(pairs) == "matig"
+    assert correlation_risk(pairs) == "laag"
 
 
-def test_usage_recommendation_warns_on_flipped_correlation():
+def test_correlation_risk_takes_worst_pair():
+    # Risico = ernst van het zwaarste paar, niet het eerste.
+    pairs = PairsReport(
+        available=True,
+        flagged=[
+            {"col_a": "a", "col_b": "b", "real_corr": 0.05, "synth_corr": -0.08, "delta": 0.13},
+            {"col_a": "c", "col_b": "d", "real_corr": 0.6, "synth_corr": -0.4, "delta": 1.0},
+        ],
+    )
+    assert correlation_risk(pairs) == "hoog"
+
+
+def test_usage_recommendation_warns_on_strong_flipped_correlation():
     df = _make_df()
     report = evaluate(df, df.copy())
     pairs = PairsReport(
         available=True,
-        flagged=[
-            {"col_a": "a", "col_b": "b", "real_corr": 0.2, "synth_corr": -0.11, "delta": 0.31}
-        ],
+        flagged=[{"col_a": "a", "col_b": "b", "real_corr": 0.5, "synth_corr": -0.3, "delta": 0.8}],
     )
     rec = usage_recommendation(report, None, pairs)
-    assert "omgeklapt" in rec.lower() or "verband" in rec.lower()
+    assert "omgeklapt" in rec.lower()
 
 
 # ── evaluate met metadata: datetime & id (#69) ──────────────────────────────────
