@@ -543,6 +543,96 @@ def test_usage_recommendation_warns_on_flipped_correlation():
     assert "omgeklapt" in rec.lower() or "verband" in rec.lower()
 
 
+# ── evaluate met metadata: datetime & id (#69) ──────────────────────────────────
+def _dates(start: str, n: int) -> list[str]:
+    return pd.date_range(start, periods=n, freq="D").strftime("%Y-%m-%d").tolist()
+
+
+def test_evaluate_datetime_uses_wasserstein_not_tv():
+    md = {"columns": {"d": {"sdtype": "datetime", "datetime_format": "%Y-%m-%d"}}}
+    real = pd.DataFrame({"d": _dates("2020-01-01", 30)})
+    synth = pd.DataFrame({"d": _dates("2020-01-02", 30)})
+    row = evaluate(real, synth, md).rows[0]
+    assert row["dtype"] == "datetime"
+    assert row["metric"] == "wasserstein"
+
+
+def test_evaluate_datetime_no_false_fail_on_unique_dates():
+    # Bijna-unieke datums: als categorie zakt dit hard, als tijdreeks liggen ze dicht.
+    md = {"columns": {"d": {"sdtype": "datetime", "datetime_format": "%Y-%m-%d"}}}
+    real = pd.DataFrame({"d": _dates("2020-01-01", 60)})
+    synth = pd.DataFrame({"d": _dates("2020-01-02", 60)})  # 1 dag verschoven
+    assert evaluate(real, synth, md).rows[0]["ok"]
+    # Zonder metadata valt dezelfde kolom terug op het categorische TV-pad.
+    assert evaluate(real, synth).rows[0]["metric"] == "tv"
+
+
+def test_evaluate_datetime_is_type_driven_not_name_driven():
+    # Generaliseerbaar: een ánders genoemde datumkolom met een ánder formaat loopt
+    # door hetzelfde datetime-pad. De fix mag niet op kolomnaam of formaat leunen.
+    md = {"columns": {"geboortedatum": {"sdtype": "datetime", "datetime_format": "%d-%m-%Y"}}}
+    real = pd.DataFrame(
+        {
+            "geboortedatum": [
+                d.strftime("%d-%m-%Y") for d in pd.date_range("2000-01-01", periods=40, freq="D")
+            ]
+        }
+    )
+    synth = pd.DataFrame(
+        {
+            "geboortedatum": [
+                d.strftime("%d-%m-%Y") for d in pd.date_range("2000-01-02", periods=40, freq="D")
+            ]
+        }
+    )
+    row = evaluate(real, synth, md).rows[0]
+    assert row["dtype"] == "datetime"
+    assert row["metric"] == "wasserstein"
+    assert row["ok"]  # 1 dag verschoven → klein, niet vals gezakt
+
+
+def test_evaluate_excludes_id_columns():
+    md = {"columns": {"id": {"sdtype": "id"}, "x": {"sdtype": "numerical"}}}
+    real = pd.DataFrame({"id": range(50), "x": range(50)})
+    synth = pd.DataFrame({"id": range(100, 150), "x": range(50)})
+    cols = [r["column"] for r in evaluate(real, synth, md).rows]
+    assert "id" not in cols
+    assert "x" in cols
+
+
+def test_evaluate_without_metadata_is_backward_compatible():
+    df = _make_df()
+    assert len(evaluate(df, df.copy()).rows) == 2
+
+
+# ── improvement_advice: kloppend advies (#69) ───────────────────────────────────
+def test_improvement_advice_skips_kde_when_already_active():
+    # Multimodale, falende kolom die al gaussian_kde heeft → advies erkent dat en
+    # raadt het niet opnieuw aan. real-df met brede floats triggert geen type-hint.
+    report = Report(
+        rows=[
+            {"column": "x", "dtype": "numeric", "score": 0.3, "metric": "wasserstein", "ok": False}
+        ],
+        modal_flags=[{"column": "x", "real_modes": 2, "synth_modes": 1}],
+    )
+    real = pd.DataFrame({"x": np.linspace(0.0, 1000.0, 50)})
+    advice = improvement_advice(report, real, None, {"x": "gaussian_kde"}, None)
+    assert any("al actieve" in a for a in advice)
+
+
+def test_improvement_advice_includes_flipped_correlation():
+    df = _make_numeric_df(60)
+    report = evaluate(df, df.copy())  # geen kolomfouten
+    pairs = PairsReport(
+        available=True,
+        flagged=[
+            {"col_a": "a", "col_b": "b", "real_corr": 0.2, "synth_corr": -0.11, "delta": 0.31}
+        ],
+    )
+    advice = improvement_advice(report, df, None, None, pairs)
+    assert any("omgeklapt" in a for a in advice)
+
+
 # ── sdmetrics QualityReport ──────────────────────────────────────────────────────
 
 

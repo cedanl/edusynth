@@ -176,7 +176,7 @@ def render(
     real_metadata_dict: dict | None = None,
 ) -> None:
     with st.spinner("Validatie en privacyanalyse berekenen…"):
-        report = evaluate(df, synth)
+        report = evaluate(df, synth, metadata_dict or real_metadata_dict)
         priv = evaluate_privacy(df, synth, primary_key=primary_key)
         pairs = evaluate_pairs(df, synth)
         sdm = evaluate_sdmetrics(df, synth, metadata_dict)
@@ -202,7 +202,9 @@ def render(
     _render_verdict_banner(verdict, recommendation)
 
     if verdict["brk_risk"] in ("matig", "hoog"):
-        _render_improvement_advice(improvement_advice(report, df, priv))
+        _render_improvement_advice(
+            improvement_advice(report, df, priv, numerical_distributions, pairs)
+        )
 
     tab_val, tab_dist, tab_dl = st.tabs(
         ["Validatierapport", "Distributies", "Download & Reproductie"]

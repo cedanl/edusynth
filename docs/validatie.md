@@ -28,6 +28,13 @@ Het rapport toont de score als primaire waarde en de ruwe Wasserstein-afstand er
 
 Ja/nee-kolommen (booleaans) worden als categorisch behandeld en via de TV-afstand vergeleken, niet via Wasserstein.
 
+### Datum- en id-kolommen
+
+- **Datums** worden naar een tijdstip omgezet en als numerieke kolom gescoord (Wasserstein), niet als categorie. Een datumkolom heeft veel unieke waarden; als categorie zou die bijna altijd "mislukken" terwijl de synthese prima is. De datumvergelijking voorkomt dat valse alarm.
+- **Id-kolommen** (identifiers, primary key) blijven buiten de score. Een id heeft geen verdeling om na te bootsen; een afwijking erop zegt niets over de kwaliteit.
+
+Hiervoor gebruikt de app de kolomtypes uit de configuratie. Staat een datumkolom nog op _categorisch_, pas het type dan aan onder _Kolomtypes aanpassen_ — anders wordt de datum alsnog als categorie vergeleken.
+
 ## Geavanceerde kwaliteitsscore (sdmetrics)
 
 De TV- en Wasserstein-scores zijn een snelle vuistregel. Voor een **uitgebreider** oordeel toont de app onder _Geavanceerde kwaliteitsscore (sdmetrics)_ ook de officiële [sdmetrics](https://docs.sdv.dev/sdmetrics) `QualityReport`:
