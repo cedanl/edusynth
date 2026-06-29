@@ -13,6 +13,7 @@ from edu_synth.core.validate import (
     _spread,
     _tv_distance,
     build_validation_report,
+    correlation_risk,
     evaluate,
     evaluate_pairs,
     evaluate_privacy,
@@ -476,6 +477,70 @@ def test_evaluate_pairs_flagged_structure():
         assert "real_corr" in f
         assert "synth_corr" in f
         assert "delta" in f
+
+
+# ── correlation_risk (#67) ──────────────────────────────────────────────────────
+def test_correlation_risk_laag_without_flags():
+    assert correlation_risk(PairsReport(available=True, flagged=[])) == "laag"
+
+
+def test_correlation_risk_laag_when_unavailable():
+    # Te weinig numerieke kolommen mag het oordeel niet verlagen.
+    assert correlation_risk(PairsReport(available=False, flagged=[])) == "laag"
+
+
+def test_correlation_risk_hoog_on_sign_flip():
+    # Een betekenisvol positief verband wordt negatief → omgeklapt → hoog.
+    pairs = PairsReport(
+        available=True,
+        flagged=[
+            {"col_a": "a", "col_b": "b", "real_corr": 0.2, "synth_corr": -0.11, "delta": 0.31}
+        ],
+    )
+    assert correlation_risk(pairs) == "hoog"
+
+
+def test_correlation_risk_hoog_on_large_delta():
+    # Grote delta zonder tekenomslag is ook ernstig.
+    pairs = PairsReport(
+        available=True,
+        flagged=[{"col_a": "a", "col_b": "b", "real_corr": 0.6, "synth_corr": 0.25, "delta": 0.35}],
+    )
+    assert correlation_risk(pairs) == "hoog"
+
+
+def test_correlation_risk_matig_on_mild_deviation():
+    # Wel geflagd (delta > 0.1) maar mild en geen tekenomslag.
+    pairs = PairsReport(
+        available=True,
+        flagged=[{"col_a": "a", "col_b": "b", "real_corr": 0.4, "synth_corr": 0.25, "delta": 0.15}],
+    )
+    assert correlation_risk(pairs) == "matig"
+
+
+def test_correlation_risk_ignores_trivial_sign_flip():
+    # Tekenomslag op een verwaarloosbaar verband (|real_corr| < 0.15) is ruis,
+    # geen omgeklapt verband → niet 'hoog'.
+    pairs = PairsReport(
+        available=True,
+        flagged=[
+            {"col_a": "a", "col_b": "b", "real_corr": 0.05, "synth_corr": -0.08, "delta": 0.13}
+        ],
+    )
+    assert correlation_risk(pairs) == "matig"
+
+
+def test_usage_recommendation_warns_on_flipped_correlation():
+    df = _make_df()
+    report = evaluate(df, df.copy())
+    pairs = PairsReport(
+        available=True,
+        flagged=[
+            {"col_a": "a", "col_b": "b", "real_corr": 0.2, "synth_corr": -0.11, "delta": 0.31}
+        ],
+    )
+    rec = usage_recommendation(report, None, pairs)
+    assert "omgeklapt" in rec.lower() or "verband" in rec.lower()
 
 
 # ── sdmetrics QualityReport ──────────────────────────────────────────────────────

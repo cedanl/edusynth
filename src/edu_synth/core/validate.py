@@ -372,6 +372,33 @@ def evaluate_pairs(real: pd.DataFrame, synth: pd.DataFrame) -> PairsReport:
     )
 
 
+# Een omgeklapt verband (teken draait om op een betekenisvol verband) is de
+# zwaarste correlatiefout: wie op dat verband een analyse bouwt, trekt een
+# omgekeerde conclusie. Een grote delta zonder tekenomslag is ook ernstig; milde
+# afwijkingen blijven "matig".
+_CORR_SIGNIFICANT = 0.15  # |corr| in de echte data waaronder een tekenomslag ruis is
+_CORR_LARGE_DELTA = 0.3  # delta hierboven → ernstige afwijking, ook zonder tekenomslag
+
+
+def correlation_risk(pairs: PairsReport) -> str:
+    """Vertaal de geflagde correlatieparen naar 'laag' | 'matig' | 'hoog'.
+
+    - ``hoog``: een tekenomslag op een betekenisvol verband (positief wordt
+      negatief of omgekeerd) of een grote delta;
+    - ``matig``: wel geflagde paren, maar mild;
+    - ``laag``: geen geflagde paren, of correlatie niet berekenbaar (< 2
+      numerieke kolommen) — dat laatste mag het oordeel niet verlagen.
+    """
+    if not pairs.available or not pairs.flagged:
+        return "laag"
+    for p in pairs.flagged:
+        rc, sc = p["real_corr"], p["synth_corr"]
+        flipped = rc * sc < 0 and abs(rc) >= _CORR_SIGNIFICANT
+        if flipped or p["delta"] > _CORR_LARGE_DELTA:
+            return "hoog"
+    return "matig"
+
+
 # ── sdmetrics QualityReport ──────────────────────────────────────────────────────
 
 _SDMETRICS_MAX_ROWS = 5_000  # cap zodat de report responsive blijft bij grote sets
@@ -461,11 +488,17 @@ RECOMMENDATION_DISCLAIMER = (
 )
 
 
-def usage_recommendation(report: Report, priv: PrivacyReport | None = None) -> str:
+def usage_recommendation(
+    report: Report,
+    priv: PrivacyReport | None = None,
+    pairs: PairsReport | None = None,
+) -> str:
     """Vertaal validatiescores naar een neutrale kwaliteits- en bruikbaarheidsindicatie.
 
     Beschrijft de statistische gelijkenis met de echte data; claimt bewust geen
-    vastgestelde geschiktheid (zie :data:`RECOMMENDATION_DISCLAIMER`).
+    vastgestelde geschiktheid (zie :data:`RECOMMENDATION_DISCLAIMER`). Als *pairs*
+    is meegegeven, weegt het correlatiebehoud mee — een omgeklapt verband krijgt
+    een expliciete waarschuwing.
     """
     priv_risk = priv.risk_level if (priv and priv.available) else "onbekend"
 
@@ -483,21 +516,35 @@ def usage_recommendation(report: Report, priv: PrivacyReport | None = None) -> s
     n_failed = sum(1 for r in scored if not r.get("ok", True))
 
     if max_score < 0.1 and n_failed == 0:
-        return "Hoge statistische kwaliteit — alle kolomverdelingen liggen dicht bij de echte data."
-    if n_failed == 0:
-        return (
+        base = "Hoge statistische kwaliteit — alle kolomverdelingen liggen dicht bij de echte data."
+    elif n_failed == 0:
+        base = (
             "Goede statistische kwaliteit — verdelingen volgen de echte data met "
             "kleine afwijkingen. Controleer absolute frequenties vóór extern gebruik."
         )
-    if n_failed <= max(1, len(scored) // 3):
-        return (
+    elif n_failed <= max(1, len(scored) // 3):
+        base = (
             "Matige statistische kwaliteit — enkele kolommen wijken merkbaar af. "
             "Bruikbaar voor patroonverkenning en interne tests."
         )
-    return (
-        "Lage statistische kwaliteit — meerdere kolommen wijken sterk af. "
-        "Alleen geschikt voor technische tests."
-    )
+    else:
+        base = (
+            "Lage statistische kwaliteit — meerdere kolommen wijken sterk af. "
+            "Alleen geschikt voor technische tests."
+        )
+
+    corr_risk = correlation_risk(pairs) if pairs is not None else "laag"
+    if corr_risk == "hoog":
+        base += (
+            " Let op: een of meer verbanden tussen kolommen zijn omgeklapt of wijken "
+            "sterk af — controleer de correlaties vóór analyses die op samenhang leunen."
+        )
+    elif corr_risk == "matig":
+        base += (
+            " Enkele verbanden tussen kolommen wijken af; zie de correlaties in het "
+            "validatierapport."
+        )
+    return base
 
 
 # ── Verbeteradvies ─────────────────────────────────────────────────────────────
