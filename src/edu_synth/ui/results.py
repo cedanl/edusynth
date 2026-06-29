@@ -68,10 +68,17 @@ def _samenhang_verdict(pairs: PairsReport, risk: str) -> tuple[str, str]:
 
 
 def _bruikbaarheid_verdict(verd_risk: str, priv_risk: str, corr_risk: str) -> tuple[str, str]:
-    risks = {verd_risk, priv_risk, corr_risk}
-    if "hoog" in risks:
+    """Combineer de drie deeloordelen tot één bruikbaarheidsoordeel.
+
+    Geen solo-veto: één enkele `hoog`-dimensie verlaagt naar "Bruikbaar met
+    voorbehoud", niet meteen naar "Niet aanbevolen" — anders zou bv. één
+    omgeklapt verband een verder uitstekende dataset afkeuren. "Niet aanbevolen"
+    alleen bij privacy-risico (altijd zwaarwegend) of bij ≥2 dimensies hoog.
+    """
+    risks = [verd_risk, priv_risk, corr_risk]
+    if priv_risk == "hoog" or [verd_risk, corr_risk].count("hoog") >= 2:
         return "Niet aanbevolen", "hoog"
-    if "matig" in risks or "onbekend" in risks:
+    if "hoog" in risks or "matig" in risks or "onbekend" in risks:
         return "Bruikbaar met voorbehoud", "matig"
     return "Hoge bruikbaarheid", "laag"
 
