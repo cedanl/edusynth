@@ -18,6 +18,7 @@ from edu_synth.core.validate import (
     evaluate_pairs,
     evaluate_privacy,
     evaluate_sdmetrics,
+    improvement_advice,
     usage_recommendation,
 )
 from edu_synth.ui.theme import NPULS, apply_plotly_style
@@ -90,6 +91,16 @@ def _render_verdict_banner(verdict: dict, recommendation: str) -> None:
     msg_fn(f"**{icon} Oordeel: {verdict['brk_label']}** — {_VERDICT_TEXT.get(brk_risk, '')}")
     st.caption(f"**Gebruik:** {recommendation}")
     st.caption(f"ℹ️ {RECOMMENDATION_DISCLAIMER}")
+
+
+def _render_improvement_advice(advice: list[str]) -> None:
+    """Toon concrete verbeterpunten onder het oordeel (alleen bij matig/onvoldoende)."""
+    if not advice:
+        return
+    with st.container(border=True):
+        st.markdown("**Wat kun je verbeteren?**")
+        for tip in advice:
+            st.markdown(f"- {tip}")
 
 
 # ── Download-dialog ────────────────────────────────────────────────────────────
@@ -170,6 +181,9 @@ def render(
     }
 
     _render_verdict_banner(verdict, recommendation)
+
+    if verdict["brk_risk"] in ("matig", "hoog"):
+        _render_improvement_advice(improvement_advice(report, df, priv))
 
     tab_val, tab_dist, tab_dl = st.tabs(
         ["Validatierapport", "Distributies", "Download & Reproductie"]

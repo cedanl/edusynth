@@ -500,6 +500,73 @@ def usage_recommendation(report: Report, priv: PrivacyReport | None = None) -> s
     )
 
 
+# ── Verbeteradvies ─────────────────────────────────────────────────────────────
+# Bij een matig/onvoldoende oordeel: vertaal de gemeten signalen naar concrete
+# acties, gekoppeld aan de slechtst scorende kolommen. Elk advies wijst naar een
+# knop in de app, zodat de gebruiker zelf kan bijsturen.
+_SMALL_DATASET = 500  # onder dit rij-aantal heeft de synthesizer weinig houvast
+_HIGH_CARDINALITY = 50  # categorische kolom met meer unieke waarden → kandidaat om te schrappen
+_MAX_ADVICE = 4  # niet overladen; alleen de belangrijkste punten
+
+
+def improvement_advice(
+    report: Report, real: pd.DataFrame, priv: PrivacyReport | None = None
+) -> list[str]:
+    """Geef concrete verbeteradviezen, gericht op de slechtst scorende kolommen.
+
+    Leeg bij goede kwaliteit. Elk advies koppelt een gemeten signaal (verkeerd
+    kolomtype, verloren pieken, hoge cardinaliteit, te weinig rijen, privacyrisico)
+    aan een actie in de app. Markdown-opmaak, bedoeld als bulletlijst.
+    """
+    from edu_synth.core.synthesize import infer_column_hints
+
+    advice: list[str] = []
+
+    if priv is not None and priv.available and priv.risk_level == "hoog":
+        advice.append(
+            "**Privacy** — hoog risico op herleidbaarheid. Markeer identifiers "
+            "(studentnummer, e-mail) als type *ID*, of genereer minder rijen."
+        )
+
+    hints = {h.name: h for h in infer_column_hints(real) if h.has_suggestion}
+    modal_cols = {f["column"] for f in report.modal_flags}
+    scored = [r for r in report.rows if "score" in r]
+    failing = sorted(
+        (r for r in scored if not r.get("ok", True)), key=lambda r: r["score"], reverse=True
+    )
+
+    for r in failing:
+        if len(advice) >= _MAX_ADVICE:
+            break
+        col = r["column"]
+        if col in hints:
+            suggestion = {"categorical": "categorisch", "datetime": "een datum"}.get(
+                hints[col].suggested_sdtype, hints[col].suggested_sdtype
+            )
+            advice.append(
+                f"**{col}** lijkt {suggestion} maar wordt anders behandeld — pas het type "
+                "aan onder *Kolomtypes aanpassen*."
+            )
+        elif col in modal_cols:
+            advice.append(
+                f"**{col}** heeft meerdere pieken die in de synthese vervlakken. Probeer een "
+                "andere verdeling (bijv. *gaussian_kde*) onder *Verdelingen*."
+            )
+        elif r["dtype"] == "categorical" and real[col].nunique() > _HIGH_CARDINALITY:
+            advice.append(
+                f"**{col}** heeft veel unieke waarden ({real[col].nunique()}). Overweeg de "
+                "kolom weg te laten of waarden te groeperen."
+            )
+
+    if len(real) < _SMALL_DATASET and len(advice) < _MAX_ADVICE:
+        advice.append(
+            f"De dataset is klein ({len(real)} rijen). Onder {_SMALL_DATASET} rijen heeft de "
+            "synthesizer weinig houvast; meer data geeft stabielere resultaten."
+        )
+
+    return advice[:_MAX_ADVICE]
+
+
 # ── Validatierapport-export ──────────────────────────────────────────────────────
 
 

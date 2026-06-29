@@ -47,6 +47,20 @@ Boven de details toont de app een kort **gebruiksoordeel** (bijv. "Hoge statisti
 !!! note "Operationele vuistregel"
     Het oordeel is een operationele vuistregel op basis van afstandsmetrieken (TV, genormaliseerde Wasserstein), niet ontleend aan een vastgestelde norm. Beoordeel zelf of de kwaliteit volstaat voor het beoogde gebruik.
 
+### Verbeteradvies bij een matig of onvoldoende oordeel
+
+Is het oordeel _Bruikbaar met voorbehoud_ of _Niet aanbevolen_, dan toont de app onder het oordeel een blok **Wat kun je verbeteren?**. Dat koppelt de slechtst scorende kolommen aan een waarschijnlijke oorzaak en een concrete actie:
+
+| Gemeten signaal | Advies |
+|---|---|
+| Kolom lijkt verkeerd getypeerd | Pas het type aan onder _Kolomtypes aanpassen_ |
+| Kolom verliest meerdere pieken (multimodaal) | Kies een andere verdeling (`gaussian_kde`) onder _Verdelingen_ |
+| Categorische kolom met veel unieke waarden | Laat de kolom weg of groepeer waarden |
+| Te weinig rijen (< 500) | Gebruik meer data voor stabielere synthese |
+| Hoog privacyrisico | Markeer identifiers als _ID_ of genereer minder rijen |
+
+Bij een goed oordeel verschijnt het blok niet. De adviezen zijn suggesties op basis van de gemeten scores — geen garantie dat één aanpassing het oordeel omdraait.
+
 ## Validatierapport exporteren (JSON)
 
 In de tab _Download & Reproductie_ staat naast de CSV een knop **Download validation_report.json**. Dit machine-leesbare rapport bundelt alle scores die anders alleen in de UI zichtbaar zijn, plus de synthese-parameters:
