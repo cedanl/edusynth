@@ -77,11 +77,13 @@ Longitudinale data heeft meerdere rijen per entiteit (bijvoorbeeld één rij per
 
 De overgangsmatrix-afstand is een TV-afstand per bronstaat, gewogen naar hoe vaak die bronstaat in de echte data voorkomt — een veelvoorkomende overgang telt zwaarder dan een zeldzame. De sequentielengte-verdeling wordt vergeleken met de genormaliseerde Wasserstein-afstand, net als numerieke kolommen. Id-kolommen, de sequentie-key en de tijd-index zelf blijven buiten beschouwing.
 
+Bij longitudinale synthese toont de app deze signalen als scorecard **Tijdsgedrag** met een gewone-taal-oordeel, op dezelfde plek waar tabulaire data de scorecard Samenhang krijgt. Het tijdsgedrag telt mee in het overall bruikbaarheidsoordeel, en de temporele scores komen mee in de `validation_report.json`-export onder `temporal`.
+
 ## Gebruiksoordeel — een vuistregel, geen norm
 
 Boven de details toont de app een kort **gebruiksoordeel** (bijv. "Hoge statistische kwaliteit") met een bruikbaarheidsindicatie. Dit oordeel is bewust geformuleerd in termen van statistische kwaliteit en bruikbaarheid.
 
-Het eindoordeel combineert de drie deeloordelen (verdeling, samenhang, privacy) zónder solo-veto: één enkele zwakke dimensie verlaagt naar **Bruikbaar met voorbehoud**, niet meteen naar **Niet aanbevolen**. Een dataset die op 94% van de kolommen goed scoort wordt zo niet afgekeurd op één afwijking. **Niet aanbevolen** verschijnt alleen bij een privacy-risico (altijd zwaarwegend) of wanneer twee deeloordelen tegelijk hoog zijn.
+Het eindoordeel combineert de deeloordelen (verdeling, samenhang, privacy — en bij longitudinale data ook tijdsgedrag) zónder solo-veto: één enkele zwakke dimensie verlaagt naar **Bruikbaar met voorbehoud**, niet meteen naar **Niet aanbevolen**. Een dataset die op 94% van de kolommen goed scoort wordt zo niet afgekeurd op één afwijking. **Niet aanbevolen** verschijnt alleen bij een privacy-risico (altijd zwaarwegend) of wanneer twee deeloordelen tegelijk hoog zijn.
 
 !!! note "Operationele vuistregel"
     Het oordeel is een operationele vuistregel op basis van afstandsmetrieken (TV, genormaliseerde Wasserstein), niet ontleend aan een vastgestelde norm. Beoordeel zelf of de kwaliteit volstaat voor het beoogde gebruik.
