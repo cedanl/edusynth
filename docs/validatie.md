@@ -65,6 +65,18 @@ Wijkt alleen een zwak verband (`\|echt\| < 0.2`) af, dan blijft de samenhang _Go
 
 Heeft de dataset minder dan twee numerieke kolommen, dan is deze controle niet berekenbaar; dat verlaagt het oordeel niet. Voor categorisch × categorisch en categorisch × numeriek dekt de sdmetrics _Column Pair Trends_ (hierboven) de samenhang aanvullend af.
 
+## Temporele getrouwheid (longitudinale data)
+
+Longitudinale data heeft meerdere rijen per entiteit (bijvoorbeeld één rij per student per studiejaar), geordend op een tijd-index. De metrieken hierboven vergelijken kolommen los van elkaar en zeggen niets over of het gedrag **over de tijd** klopt. Voor sequentiële data komen daar drie signalen bij, elk op dezelfde `[0, ~]`-schaal als de TV- en Wasserstein-score (drempel `0.2`):
+
+| Signaal | Voor welke kolom | Wat het meet |
+|---|---|---|
+| **Overgangsmatrix** | Categorische staten | Behoud van de doorstroomkansen: gaat de synthese van staat naar staat met dezelfde kansen als de echte data (bijv. _jaar 1 → jaar 2_ vs. _jaar 1 → uitval_)? |
+| **Autocorrelatie** | Numeriek | Behoud van de samenhang tussen opeenvolgende tijdstappen (lag-1), gemiddeld over de sequenties |
+| **Sequentielengte** | Alle | Kloppen de lengtes van de sequenties (aantal rijen per entiteit)? |
+
+De overgangsmatrix-afstand is een TV-afstand per bronstaat, gewogen naar hoe vaak die bronstaat in de echte data voorkomt — een veelvoorkomende overgang telt zwaarder dan een zeldzame. De sequentielengte-verdeling wordt vergeleken met de genormaliseerde Wasserstein-afstand, net als numerieke kolommen. Id-kolommen, de sequentie-key en de tijd-index zelf blijven buiten beschouwing.
+
 ## Gebruiksoordeel — een vuistregel, geen norm
 
 Boven de details toont de app een kort **gebruiksoordeel** (bijv. "Hoge statistische kwaliteit") met een bruikbaarheidsindicatie. Dit oordeel is bewust geformuleerd in termen van statistische kwaliteit en bruikbaarheid.

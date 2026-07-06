@@ -9,6 +9,7 @@ from edu_synth.core.validate import (
     PrivacyReport,
     Report,
     SDMetricsReport,
+    SequentialReport,
     _count_modes,
     _spread,
     _tv_distance,
@@ -18,6 +19,7 @@ from edu_synth.core.validate import (
     evaluate_pairs,
     evaluate_privacy,
     evaluate_sdmetrics,
+    evaluate_sequential,
     improvement_advice,
     usage_recommendation,
 )
@@ -772,3 +774,87 @@ def test_advice_capped_at_max():
     df = pd.DataFrame({f"c{i}": [f"v_{j}" for j in range(600)] for i in range(8)})
     report = Report(rows=[_failing_row(f"c{i}", dtype="categorical") for i in range(8)])
     assert len(improvement_advice(report, df)) <= 4
+
+
+# ── Temporele validatie (evaluate_sequential) ──────────────────────────────────
+
+
+def _longitudinal(states_by_student: dict[str, list[str]], ec: dict[str, list[int]] | None = None):
+    """Bouw een longitudinale tabel: één rij per (student, jaar)."""
+    rows = []
+    for sid, states in states_by_student.items():
+        for offset, state in enumerate(states):
+            row = {"studentnummer": sid, "jaar": 2019 + offset, "status": state}
+            if ec is not None:
+                row["ec"] = ec[sid][offset]
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def test_sequential_identical_passes():
+    df = _longitudinal(
+        {
+            "a": ["jaar1", "jaar2", "diploma"],
+            "b": ["jaar1", "jaar2", "diploma"],
+            "c": ["jaar1", "uitval"],
+        }
+    )
+    report = evaluate_sequential(df, df.copy(), "studentnummer", "jaar")
+    assert isinstance(report, SequentialReport)
+    assert report.available
+    assert report.passed()
+    assert report.length_distance == 0.0
+    status = next(r for r in report.rows if r["column"] == "status")
+    assert status["kind"] == "transition"
+    assert status["distance"] == 0.0
+
+
+def test_sequential_transition_shift_detected():
+    real = _longitudinal({s: ["jaar1", "jaar2", "diploma"] for s in "abcde"})
+    # Synthetisch: iedereen valt uit na jaar1 — overgangskansen totaal anders.
+    synth = _longitudinal({s: ["jaar1", "uitval"] for s in "abcde"})
+    report = evaluate_sequential(real, synth, "studentnummer", "jaar")
+    status = next(r for r in report.rows if r["column"] == "status")
+    assert status["kind"] == "transition"
+    assert status["distance"] > 0.2
+    assert not status["ok"]
+
+
+def test_sequential_length_distribution_detected():
+    real = _longitudinal({s: ["jaar1", "jaar2", "jaar3", "diploma"] for s in "abcde"})
+    synth = _longitudinal({s: ["jaar1"] for s in "abcde"})  # veel kortere sequenties
+    report = evaluate_sequential(real, synth, "studentnummer", "jaar")
+    assert report.length_distance > 0.2
+    assert not report.length_ok
+    assert not report.passed()
+
+
+def test_sequential_numeric_uses_autocorrelation():
+    # Oplopende reeks per student → sterke positieve lag-1 autocorrelatie.
+    ec = {s: [10, 20, 30, 40] for s in "abcde"}
+    real = _longitudinal({s: ["j1", "j2", "j3", "j4"] for s in "abcde"}, ec=ec)
+    report = evaluate_sequential(real, real.copy(), "studentnummer", "jaar")
+    ec_row = next(r for r in report.rows if r["column"] == "ec")
+    assert ec_row["kind"] == "autocorrelation"
+    assert ec_row["distance"] == 0.0
+
+
+def test_sequential_missing_key_unavailable():
+    df = _longitudinal({"a": ["jaar1", "diploma"]})
+    report = evaluate_sequential(df, df.copy(), "ontbrekend", "jaar")
+    assert not report.available
+    assert "ontbrekend" in report.reason
+
+
+def test_sequential_metadata_skips_id_and_datetime():
+    df = _longitudinal({s: ["jaar1", "jaar2", "diploma"] for s in "abc"})
+    metadata = {
+        "columns": {
+            "studentnummer": {"sdtype": "id"},
+            "jaar": {"sdtype": "numerical"},
+            "status": {"sdtype": "categorical"},
+        }
+    }
+    report = evaluate_sequential(df, df.copy(), "studentnummer", "jaar", metadata=metadata)
+    cols = {r["column"] for r in report.rows}
+    assert cols == {"status"}  # id (key) en index blijven buiten beschouwing

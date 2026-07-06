@@ -522,6 +522,179 @@ def evaluate_sdmetrics(
     )
 
 
+# ── Temporele validatie (longitudinaal) ─────────────────────────────────────────
+# Longitudinale data (meerdere rijen per entiteit, geordend op een tijd-index) vraagt
+# om andere metrieken dan de per-kolom afstanden hierboven: die zeggen niks over of
+# het gedrag óver de tijd klopt. Drie signalen, elk op dezelfde [0, ~]-schaal als de
+# tabular-scores zodat `_SCORE_OK` als drempel bruikbaar blijft:
+#   - overgangsmatrix (categorische staten): behoudt de synthese de doorstroomkansen?
+#   - autocorrelatie (numeriek): behoudt de synthese de samenhang tussen tijdstappen?
+#   - sequentielengte-verdeling: kloppen de lengtes van de sequenties?
+
+_AUTOCORR_OK = 0.2  # max. abs. verschil in gemiddelde lag-1 autocorrelatie
+
+
+@dataclass
+class SequentialReport:
+    """Temporele validatie voor longitudinale (sequentiële) data.
+
+    ``length_*`` beschrijft de sequentielengte-verdeling; ``rows`` bevat per
+    tijdsafhankelijke kolom één verdict (overgangsmatrix of autocorrelatie).
+    """
+
+    available: bool
+    length_distance: float = 0.0  # genorm. Wasserstein tussen echte/synth. lengtes
+    length_ok: bool = True
+    rows: list[dict] = field(default_factory=list)  # {column, kind, distance, score, ok}
+    reason: str = ""
+
+    def passed(self) -> bool:
+        return self.available and self.length_ok and all(r.get("ok", True) for r in self.rows)
+
+
+def _ordered_sequences(df: pd.DataFrame, seq_key: str, seq_index: str):
+    """Groepeer op entiteit en sorteer elke sequentie op de tijd-index."""
+    return df.sort_values([seq_key, seq_index]).groupby(seq_key, sort=False)
+
+
+def _transition_distance(
+    real: pd.DataFrame, synth: pd.DataFrame, seq_key, seq_index, col
+) -> float | None:
+    """Gewogen TV-afstand tussen de rij-genormaliseerde overgangsmatrices.
+
+    Per bronstaat vergelijken we de kans-verdeling naar de volgende staat (TV), en
+    wegen die met het aandeel van die bronstaat in de echte overgangen. Zo telt een
+    veelvoorkomende overgang zwaarder dan een zeldzame. Geeft ``None`` als er geen
+    overgangen zijn (sequenties van lengte 1).
+    """
+
+    def pairs(frame: pd.DataFrame) -> pd.DataFrame:
+        froms, tos = [], []
+        for _, g in _ordered_sequences(frame, seq_key, seq_index):
+            vals = g[col].to_numpy()
+            if len(vals) >= 2:
+                froms.extend(vals[:-1])
+                tos.extend(vals[1:])
+        return pd.DataFrame({"from": froms, "to": tos})
+
+    real_t, synth_t = pairs(real), pairs(synth)
+    if real_t.empty:
+        return None
+
+    real_m = pd.crosstab(real_t["from"], real_t["to"], normalize="index")
+    synth_m = (
+        pd.crosstab(synth_t["from"], synth_t["to"], normalize="index")
+        if not synth_t.empty
+        else pd.DataFrame()
+    )
+    weights = real_t["from"].value_counts(normalize=True)
+    tos = real_m.columns.union(synth_m.columns) if not synth_m.empty else real_m.columns
+
+    total = 0.0
+    for src in real_m.index:
+        real_p = real_m.loc[src].reindex(tos, fill_value=0.0)
+        if not synth_m.empty and src in synth_m.index:
+            synth_p = synth_m.loc[src].reindex(tos, fill_value=0.0)
+        else:
+            synth_p = pd.Series(0.0, index=tos)  # bronstaat niet gehaald → maximale afwijking
+        total += float(weights.get(src, 0.0)) * 0.5 * float((real_p - synth_p).abs().sum())
+    return total
+
+
+def _mean_autocorr(df: pd.DataFrame, seq_key, seq_index, col) -> float | None:
+    """Gemiddelde lag-1 autocorrelatie over alle sequenties (constante reeksen tellen niet mee)."""
+    values = []
+    for _, g in _ordered_sequences(df, seq_key, seq_index):
+        s = g[col].astype(float)
+        if len(s) >= 2 and s.std() > 0:
+            ac = s.autocorr(lag=1)
+            if pd.notna(ac):
+                values.append(ac)
+    return float(np.mean(values)) if values else None
+
+
+def evaluate_sequential(
+    real: pd.DataFrame,
+    synth: pd.DataFrame,
+    seq_key: str,
+    seq_index: str,
+    metadata: dict | None = None,
+) -> SequentialReport:
+    """Vergelijk het tijdsgedrag van *real* en *synth* longitudinale data.
+
+    *seq_key* identificeert de entiteit (bv. studentnummer), *seq_index* de tijd-as
+    (bv. studiejaar). Per tijdsafhankelijke kolom kiest het type de metriek:
+
+    Categorisch → overgangsmatrix-afstand (behoud van doorstroomkansen)
+    Numeriek    → verschil in gemiddelde lag-1 autocorrelatie
+
+    Daarnaast vergelijkt het de verdeling van de sequentielengtes (genormaliseerde
+    Wasserstein). *metadata* is de SDV-metadata-dict; zonder metadata wordt het type
+    uit de pandas-dtype afgeleid (zoals :func:`evaluate`). Id-kolommen, de key en de
+    index zelf blijven buiten beschouwing.
+    """
+    for col in (seq_key, seq_index):
+        if col not in real.columns or col not in synth.columns:
+            return SequentialReport(available=False, reason=f"Kolom '{col}' ontbreekt")
+
+    columns_meta = (metadata or {}).get("columns", {})
+
+    # Sequentielengte-verdeling: aantal rijen per entiteit, echt vs. synthetisch.
+    real_len = real.groupby(seq_key).size().to_numpy(dtype=float)
+    synth_len = synth.groupby(seq_key).size().to_numpy(dtype=float)
+    length_distance = float(wasserstein_distance(real_len, synth_len)) / _spread(
+        pd.Series(real_len)
+    )
+
+    rows = []
+    for col in real.columns:
+        if col in (seq_key, seq_index) or col not in synth.columns:
+            continue
+        sdtype = columns_meta.get(col, {}).get("sdtype")
+        if sdtype in ("id", "datetime"):
+            continue
+
+        # Numeriek → autocorrelatie; anders → overgangsmatrix. Zonder metadata valt
+        # de keuze op de dtype terug, net als in evaluate().
+        if sdtype == "numerical" or (
+            sdtype is None and _is_numeric(real[col]) and _is_numeric(synth[col])
+        ):
+            real_ac = _mean_autocorr(real, seq_key, seq_index, col)
+            synth_ac = _mean_autocorr(synth, seq_key, seq_index, col)
+            if real_ac is None or synth_ac is None:
+                continue
+            dist = abs(real_ac - synth_ac)
+            rows.append(
+                {
+                    "column": col,
+                    "kind": "autocorrelation",
+                    "distance": round(dist, 4),
+                    "score": round(dist, 4),
+                    "ok": dist < _AUTOCORR_OK,
+                }
+            )
+        else:
+            dist = _transition_distance(real, synth, seq_key, seq_index, col)
+            if dist is None:
+                continue
+            rows.append(
+                {
+                    "column": col,
+                    "kind": "transition",
+                    "distance": round(dist, 4),
+                    "score": round(dist, 4),
+                    "ok": dist < _SCORE_OK,
+                }
+            )
+
+    return SequentialReport(
+        available=True,
+        length_distance=round(length_distance, 4),
+        length_ok=length_distance < _SCORE_OK,
+        rows=rows,
+    )
+
+
 # ── Gebruiksaanbeveling ────────────────────────────────────────────────────────
 
 # De drempelwaarden hieronder zijn een operationele vuistregel, niet ontleend aan
