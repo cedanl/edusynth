@@ -50,6 +50,8 @@ Onder **Geavanceerd — reproduceerbaarheid** stel je een **random seed** in (st
 
 Boven de tabbladen verschijnt een gekleurde **oordeel-banner** (groen/oranje/rood) met het overall oordeel — Hoge bruikbaarheid, Bruikbaar met voorbehoud of Niet aanbevolen — en een advieszin. Zo zie je het oordeel ook als je direct naar het Download-tabblad gaat. Bij hoog risico staat er een extra waarschuwing bij de downloadknop.
 
+Bij **longitudinale data** krijg je onder de banner een extra zin over het **tijdsgedrag**, en vervangt de scorecard **Tijdsgedrag** de scorecard Samenhang. Die beoordeelt of de overgangen tussen statussen, trends binnen trajecten en de trajectlengtes overeenkomen met de echte data — met een detailtabel per kolom. Dit tijdsgedrag telt mee in het overall oordeel.
+
 De app toont per kolom:
 
 - **TV-afstand** (categorisch) — hoe goed kloppen de verhoudingen? Onder `0.2` is groen.
@@ -58,7 +60,7 @@ De app toont per kolom:
 
 ### Stap 5 — Exporteren
 
-Download de synthetische data als CSV. Daarnaast kun je het **validatierapport** als `validation_report.json` downloaden: dit bevat alle scores (per-kolom afstanden, sdmetrics, DCR/NNDR) en de synthese-parameters (synthesizer, aantal trainingsrijen, seed, SDV-versie). Een korte samenvatting in gewone taal toont welke kolomtypes zijn herkend en hoeveel kolommen als privacygevoelig zijn gemarkeerd. De ruwe SDV-metadata (JSON) en het SDV-codeblok om het resultaat zelf te reproduceren staan onder **Technische details**.
+Download de synthetische data als CSV. Daarnaast kun je het **validatierapport** als `validation_report.json` downloaden: dit bevat alle scores (per-kolom afstanden, sdmetrics, DCR/NNDR — bij longitudinale data ook de temporele scores onder `temporal`) en de synthese-parameters (synthesizer, aantal trainingsrijen, seed, SDV-versie). Een korte samenvatting in gewone taal toont welke kolomtypes zijn herkend en hoeveel kolommen als privacygevoelig zijn gemarkeerd. De ruwe SDV-metadata (JSON) en het SDV-codeblok om het resultaat zelf te reproduceren staan onder **Technische details**.
 
 ## CLI (geavanceerd)
 

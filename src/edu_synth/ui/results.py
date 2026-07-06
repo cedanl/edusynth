@@ -13,13 +13,18 @@ from edu_synth.core.validate import (
     PrivacyReport,
     Report,
     SDMetricsReport,
+    SequentialReport,
     build_validation_report,
     correlation_risk,
     evaluate,
     evaluate_pairs,
     evaluate_privacy,
     evaluate_sdmetrics,
+    evaluate_sequential,
     improvement_advice,
+    score_verdict,
+    sequential_recommendation,
+    sequential_verdict,
     usage_recommendation,
 )
 from edu_synth.ui.theme import NPULS, apply_plotly_style
@@ -37,13 +42,7 @@ def _verdeling_verdict(report: Report) -> tuple[str, str]:
         return "Geen kolommen", "onbekend"
     max_score = max(r["score"] for r in scored)
     n_failed = sum(1 for r in scored if not r.get("ok", True))
-    if max_score < 0.1:
-        return "Uitstekend", "laag"
-    if n_failed == 0:
-        return "Goed", "laag"
-    if n_failed <= max(1, len(scored) // 3):
-        return "Matig", "matig"
-    return "Let op", "hoog"
+    return score_verdict(max_score, n_failed, len(scored))
 
 
 def _privacy_verdict(priv) -> tuple[str, str]:
@@ -69,20 +68,53 @@ def _samenhang_verdict(pairs: PairsReport, risk: str) -> tuple[str, str]:
     return labels[risk], risk
 
 
-def _bruikbaarheid_verdict(verd_risk: str, priv_risk: str, corr_risk: str) -> tuple[str, str]:
-    """Combineer de drie deeloordelen tot één bruikbaarheidsoordeel.
+def _bruikbaarheid_verdict(
+    verd_risk: str, priv_risk: str, corr_risk: str, temp_risk: str | None = None
+) -> tuple[str, str]:
+    """Combineer de deeloordelen tot één bruikbaarheidsoordeel.
 
     Geen solo-veto: één enkele `hoog`-dimensie verlaagt naar "Bruikbaar met
     voorbehoud", niet meteen naar "Niet aanbevolen" — anders zou bv. één
     omgeklapt verband een verder uitstekende dataset afkeuren. "Niet aanbevolen"
     alleen bij privacy-risico (altijd zwaarwegend) of bij ≥2 dimensies hoog.
+
+    *temp_risk* (tijdsgedrag) telt alleen mee bij longitudinale data; is ``None``
+    voor tabulaire synthese en verandert het tabular-oordeel dan niet.
     """
     risks = [verd_risk, priv_risk, corr_risk]
-    if priv_risk == "hoog" or [verd_risk, corr_risk].count("hoog") >= 2:
+    non_priv = [verd_risk, corr_risk]
+    if temp_risk is not None:
+        risks.append(temp_risk)
+        non_priv.append(temp_risk)
+    # Privacy telt niet mee in de ≥2-telling: een hoog privacyrisico is hierboven
+    # al los diskwalificerend. non_priv weegt alleen de overige dimensies.
+    if priv_risk == "hoog" or non_priv.count("hoog") >= 2:
         return "Niet aanbevolen", "hoog"
     if "hoog" in risks or "matig" in risks or "onbekend" in risks:
         return "Bruikbaar met voorbehoud", "matig"
     return "Hoge bruikbaarheid", "laag"
+
+
+def _sequential_report(
+    df: pd.DataFrame,
+    synth: pd.DataFrame,
+    modality: str | None,
+    metadata_dict: dict | None = None,
+) -> SequentialReport | None:
+    """Bereken de temporele validatie voor longitudinale data, anders None.
+
+    De sequence-key en -index komen uit de SDV-metadata (``tables.data``), zodat
+    dit werkt voor zowel een eigen upload als een demo-dataset. Bij tabulaire
+    synthese of ontbrekende sequence-velden gebeurt er niets.
+    """
+    if modality != "sequential":
+        return None
+    table_meta = (metadata_dict or {}).get("tables", {}).get("data", {})
+    seq_key = table_meta.get("sequence_key")
+    seq_index = table_meta.get("sequence_index")
+    if not seq_key or not seq_index:
+        return None
+    return evaluate_sequential(df, synth, seq_key, seq_index, table_meta)
 
 
 def _scorecard(col, label: str, verdict: str, risk: str) -> None:
@@ -189,12 +221,14 @@ def render(
         priv = evaluate_privacy(df, synth, primary_key=primary_key)
         pairs = evaluate_pairs(df, synth)
         sdm = evaluate_sdmetrics(df, synth, metadata_dict)
+        seq = _sequential_report(df, synth, modality, metadata_dict)
 
     verd_label, verd_risk = _verdeling_verdict(report)
     priv_label, priv_risk = _privacy_verdict(priv)
     corr_risk = correlation_risk(pairs)
     corr_label, corr_disp_risk = _samenhang_verdict(pairs, corr_risk)
-    brk_label, brk_risk = _bruikbaarheid_verdict(verd_risk, priv_risk, corr_risk)
+    temp_label, temp_risk = sequential_verdict(seq) if seq is not None else (None, None)
+    brk_label, brk_risk = _bruikbaarheid_verdict(verd_risk, priv_risk, corr_risk, temp_risk)
     recommendation = usage_recommendation(report, priv, pairs)
 
     verdict = {
@@ -204,11 +238,15 @@ def render(
         "priv_risk": priv_risk,
         "corr_label": corr_label,
         "corr_risk": corr_disp_risk,
+        "temp_label": temp_label,
+        "temp_risk": temp_risk,
         "brk_label": brk_label,
         "brk_risk": brk_risk,
     }
 
     _render_verdict_banner(verdict, recommendation)
+    if seq is not None:
+        st.caption(f"🕒 **Tijdsgedrag:** {sequential_recommendation(seq)}")
 
     if verdict["brk_risk"] in ("matig", "hoog"):
         _render_improvement_advice(
@@ -219,7 +257,7 @@ def render(
         ["Validatierapport", "Distributies", "Download & Reproductie"]
     )
     with tab_val:
-        _render_validation(report, priv, verdict, pairs, primary_key, sdm)
+        _render_validation(report, priv, verdict, pairs, primary_key, sdm, seq)
     with tab_dist:
         _render_distributions(df, synth, report)
     with tab_dl:
@@ -240,6 +278,7 @@ def render(
             report=report,
             priv=priv,
             sdm=sdm,
+            seq=seq,
             n_training_rows=len(df),
         )
 
@@ -252,16 +291,26 @@ def _render_validation(
     pairs: PairsReport,
     primary_key: str | None,
     sdm: SDMetricsReport,
+    seq: SequentialReport | None = None,
 ) -> None:
     # Het overall bruikbaarheidsoordeel staat al prominent in de banner vóór de
     # tabs; hier tonen we de drie deeloordelen die daarin samenkomen. Drie kaarten
-    # i.p.v. vier houdt de labels ook op smalle schermen (14") leesbaar.
+    # i.p.v. vier houdt de labels ook op smalle schermen (14") leesbaar. Bij
+    # longitudinale data vervangt Tijdsgedrag de Samenhang-kaart: het temporele
+    # oordeel is daar de kerndimensie, correlatie blijft in het detail zichtbaar.
     c1, c2, c3 = st.columns(3)
     _scorecard(c1, "Verdeling", verdict["verd_label"], verdict["verd_risk"])
-    _scorecard(c2, "Samenhang", verdict["corr_label"], verdict["corr_risk"])
+    if seq is not None:
+        _scorecard(c2, "Tijdsgedrag", verdict["temp_label"], verdict["temp_risk"])
+    else:
+        _scorecard(c2, "Samenhang", verdict["corr_label"], verdict["corr_risk"])
     _scorecard(c3, "Privacy", verdict["priv_label"], verdict["priv_risk"])
 
     st.divider()
+
+    if seq is not None:
+        _render_sequential_detail(seq)
+        st.divider()
 
     _render_correlations(pairs)
     st.divider()
@@ -368,6 +417,45 @@ def _render_correlations(pairs: PairsReport) -> None:
             "analyses die op samenhang tussen kolommen leunen."
         )
         st.dataframe(pd.DataFrame(pairs.flagged), use_container_width=True)
+
+
+_SEQ_KIND_NL = {"transition": "overgangsmatrix", "autocorrelation": "autocorrelatie"}
+
+
+def _render_sequential_detail(seq: SequentialReport) -> None:
+    """Toon het temporele detail: sequentielengte + per-kolom overgangs-/autocorrelatiescore.
+
+    Staat direct onder de scorecards omdat het tijdsgedrag voor longitudinale data
+    de kerndimensie is — net zoals correlaties dat zijn voor tabulaire analyse.
+    """
+    st.markdown("**Tijdsgedrag** (longitudinaal — overgangen, trends, trajectlengte)")
+    if not seq.available:
+        st.info(f"Niet beschikbaar: {seq.reason}")
+        return
+
+    icon = "✅" if seq.length_ok else "⚠️"
+    st.metric("Sequentielengte-afstand", f"{icon} {seq.length_distance:.3f}")
+
+    if seq.rows:
+        rdf = pd.DataFrame(seq.rows)[["column", "kind", "score", "ok"]].copy()
+        rdf["kind"] = rdf["kind"].map(_SEQ_KIND_NL).fillna(rdf["kind"])
+        rdf["ok"] = rdf["ok"].map({True: "✓", False: "✗"})
+        rdf = rdf.rename(
+            columns={
+                "column": "Kolom",
+                "kind": "Metriek",
+                "score": "Score (genorm.)",
+                "ok": "OK",
+            }
+        )
+        st.dataframe(rdf, use_container_width=True)
+
+    st.caption(
+        "Categorisch = afstand tussen de overgangsmatrices (doorstroomkansen tussen "
+        "statussen). Numeriek = verschil in lag-1 autocorrelatie (trend binnen een "
+        "traject). Score < 0.2 = goed. De sequentielengte-afstand vergelijkt hoe lang "
+        "de trajecten zijn (echt vs. synthetisch)."
+    )
 
 
 def _render_sdmetrics(sdm: SDMetricsReport) -> None:
@@ -528,6 +616,7 @@ def _render_download(
     report: Report,
     priv: PrivacyReport,
     sdm: SDMetricsReport,
+    seq: SequentialReport | None,
     n_training_rows: int,
 ) -> None:
     import json
@@ -559,6 +648,7 @@ def _render_download(
         generated_at=date.today().isoformat(),
         random_seed=random_seed,
         intended_use=st.session_state.get("intended_use"),
+        seq=seq,
     )
     st.download_button(
         "Download validation_report.json",

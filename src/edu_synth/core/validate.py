@@ -695,6 +695,58 @@ def evaluate_sequential(
     )
 
 
+def score_verdict(max_score: float, n_failed: int, n_components: int) -> tuple[str, str]:
+    """Vertaal een maximale afstand + aantal gezakte componenten naar (label, risico).
+
+    Gedeelde oordeelladder voor de verdeling- (tabular) en tijdsgedrag-oordelen,
+    zodat beide dezelfde drempels hanteren. Risico in {laag, matig, hoog}.
+    """
+    if max_score < 0.1 and n_failed == 0:
+        return "Uitstekend", "laag"
+    if n_failed == 0:
+        return "Goed", "laag"
+    if n_failed <= max(1, n_components // 3):
+        return "Matig", "matig"
+    return "Let op", "hoog"
+
+
+def sequential_verdict(seq: SequentialReport) -> tuple[str, str]:
+    """Vat de temporele validatie samen tot één label + risiconiveau.
+
+    Spiegelt de tabular-verdictlogica (verdeling) via :func:`score_verdict`: de
+    sequentielengte-verdeling telt als extra component naast de per-kolom
+    overgangs-/autocorrelatiescores. Risico onbekend als er niets te meten viel.
+    """
+    if not seq.available:
+        return "Niet berekend", "onbekend"
+    max_score = max([r["score"] for r in seq.rows] + [seq.length_distance])
+    n_failed = sum(1 for r in seq.rows if not r.get("ok", True)) + (0 if seq.length_ok else 1)
+    return score_verdict(max_score, n_failed, len(seq.rows) + 1)  # +1 voor de lengte-verdeling
+
+
+def sequential_recommendation(seq: SequentialReport) -> str:
+    """Vertaal het temporele oordeel naar één gewone-taal-uitleg voor de app."""
+    if not seq.available:
+        reason = f" ({seq.reason})" if seq.reason else ""
+        return f"Tijdsgedrag niet beoordeeld{reason}."
+    _, risk = sequential_verdict(seq)
+    if risk == "laag":
+        return (
+            "Het tijdsgedrag klopt — overgangen tussen statussen, trends binnen "
+            "trajecten en de trajectlengtes volgen de echte data."
+        )
+    if risk == "matig":
+        return (
+            "Het tijdsgedrag wijkt op onderdelen af. Controleer de overgangen en "
+            "trajectlengtes in het temporeel detail vóór longitudinale analyses."
+        )
+    return (
+        "Het tijdsgedrag wijkt sterk af — overgangen tussen statussen of de "
+        "trajectlengtes komen niet overeen met de echte data. Niet geschikt voor "
+        "longitudinale analyses."
+    )
+
+
 # ── Gebruiksaanbeveling ────────────────────────────────────────────────────────
 
 # De drempelwaarden hieronder zijn een operationele vuistregel, niet ontleend aan
@@ -878,12 +930,14 @@ def build_validation_report(
     generated_at: str,
     random_seed: int | None = None,
     intended_use: str | None = None,
+    seq: SequentialReport | None = None,
 ) -> dict:
     """Stel een machine-leesbaar validatierapport samen voor latere verantwoording.
 
     Bundelt alle scores die anders alleen in de UI zichtbaar zijn (per-kolom
     afstanden, sdmetrics, DCR/NNDR) plus de synthese-parameters, zodat een
-    download het hele oordeel reproduceerbaar vastlegt.
+    download het hele oordeel reproduceerbaar vastlegt. *seq* voegt bij
+    longitudinale synthese de temporele metrieken toe.
     """
     privacy = {"available": priv.available}
     if priv.available:
@@ -910,7 +964,7 @@ def build_validation_report(
     else:
         sdmetrics["reason"] = sdm.reason
 
-    return {
+    result = {
         "generated_at": generated_at,
         "sdv_version": sdv_version,
         "synthesizer": synthesizer,
@@ -924,3 +978,20 @@ def build_validation_report(
         "usage_recommendation": recommendation,
         "disclaimer": RECOMMENDATION_DISCLAIMER,
     }
+
+    if seq is not None:
+        temporal: dict = {"available": seq.available}
+        if seq.available:
+            temporal.update(
+                {
+                    "length_distance": seq.length_distance,
+                    "length_ok": seq.length_ok,
+                    "columns": [dict(row) for row in seq.rows],
+                    "passed": seq.passed(),
+                }
+            )
+        else:
+            temporal["reason"] = seq.reason
+        result["temporal"] = temporal
+
+    return result

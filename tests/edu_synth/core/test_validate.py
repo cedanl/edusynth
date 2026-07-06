@@ -21,6 +21,9 @@ from edu_synth.core.validate import (
     evaluate_sdmetrics,
     evaluate_sequential,
     improvement_advice,
+    score_verdict,
+    sequential_recommendation,
+    sequential_verdict,
     usage_recommendation,
 )
 
@@ -858,3 +861,92 @@ def test_sequential_metadata_skips_id_and_datetime():
     report = evaluate_sequential(df, df.copy(), "studentnummer", "jaar", metadata=metadata)
     cols = {r["column"] for r in report.rows}
     assert cols == {"status"}  # id (key) en index blijven buiten beschouwing
+
+
+# ── Gedeelde oordeelladder ──────────────────────────────────────────────────────
+
+
+def test_score_verdict_ladder():
+    assert score_verdict(0.05, 0, 5) == ("Uitstekend", "laag")
+    assert score_verdict(0.15, 0, 5) == ("Goed", "laag")
+    assert score_verdict(0.3, 1, 5) == ("Matig", "matig")
+    assert score_verdict(0.3, 3, 5) == ("Let op", "hoog")
+
+
+# ── Temporeel oordeel + gewone taal (app-integratie) ────────────────────────────
+
+
+def test_sequential_verdict_identical_is_low_risk():
+    df = _longitudinal({s: ["jaar1", "jaar2", "diploma"] for s in "abcde"})
+    report = evaluate_sequential(df, df.copy(), "studentnummer", "jaar")
+    label, risk = sequential_verdict(report)
+    assert risk == "laag"
+    assert label == "Uitstekend"
+
+
+def test_sequential_verdict_transition_shift_not_low_risk():
+    real = _longitudinal({s: ["jaar1", "jaar2", "diploma"] for s in "abcde"})
+    synth = _longitudinal({s: ["jaar1", "uitval"] for s in "abcde"})
+    _, risk = sequential_verdict(evaluate_sequential(real, synth, "studentnummer", "jaar"))
+    assert risk in ("matig", "hoog")
+
+
+def test_sequential_verdict_unavailable_is_unknown():
+    df = _longitudinal({"a": ["jaar1", "diploma"]})
+    label, risk = sequential_verdict(evaluate_sequential(df, df.copy(), "ontbrekend", "jaar"))
+    assert risk == "onbekend"
+    assert label == "Niet berekend"
+
+
+def test_sequential_recommendation_available_mentions_tijdsgedrag():
+    df = _longitudinal({s: ["jaar1", "jaar2", "diploma"] for s in "abcde"})
+    text = sequential_recommendation(evaluate_sequential(df, df.copy(), "studentnummer", "jaar"))
+    assert "tijdsgedrag" in text.lower()
+
+
+def test_sequential_recommendation_unavailable_flags_not_assessed():
+    df = _longitudinal({"a": ["jaar1", "diploma"]})
+    text = sequential_recommendation(evaluate_sequential(df, df.copy(), "ontbrekend", "jaar"))
+    assert "niet beoordeeld" in text.lower()
+
+
+def test_build_validation_report_includes_temporal_section():
+    df = _longitudinal({s: ["jaar1", "jaar2", "diploma"] for s in "abcde"})
+    seq = evaluate_sequential(df, df.copy(), "studentnummer", "jaar")
+    report = evaluate(df, df.copy())
+    priv = evaluate_privacy(df, df.copy())
+    sdm = evaluate_sdmetrics(df, df.copy(), _metadata(df))
+    out = build_validation_report(
+        report=report,
+        priv=priv,
+        sdm=sdm,
+        recommendation=usage_recommendation(report, priv),
+        synthesizer="par",
+        n_training_rows=len(df),
+        n_generated_rows=5,
+        sdv_version="1.37.0",
+        generated_at="2026-06-15",
+        seq=seq,
+    )
+    assert out["temporal"]["available"] is True
+    assert "length_distance" in out["temporal"]
+    assert out["temporal"]["passed"] is True
+
+
+def test_build_validation_report_omits_temporal_when_no_seq():
+    df = _make_df()
+    report = evaluate(df, df.copy())
+    priv = evaluate_privacy(df, df.copy())
+    sdm = evaluate_sdmetrics(df, df.copy(), _metadata(df))
+    out = build_validation_report(
+        report=report,
+        priv=priv,
+        sdm=sdm,
+        recommendation=usage_recommendation(report, priv),
+        synthesizer="gaussian",
+        n_training_rows=len(df),
+        n_generated_rows=5,
+        sdv_version="1.37.0",
+        generated_at="2026-06-15",
+    )
+    assert "temporal" not in out
