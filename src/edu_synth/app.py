@@ -33,6 +33,19 @@ def _run_sequential(src: datasource.DataSource, cfg: cfg_ui.SequentialConfig) ->
                     "index": cfg.seq_idx,
                     "index_sdtype": metadata.tables["data"].columns[cfg.seq_idx]["sdtype"],
                 }
+            # PAR eist een sequence key; ontbreekt die in de metadata, geef een
+            # duidelijke melding (met de gedetecteerde velden als diagnose) i.p.v.
+            # een rauwe SDV-crash.
+            table_meta = list(metadata.tables.values())[0]
+            if not table_meta.sequence_key:
+                st.error(
+                    "Deze longitudinale dataset heeft geen **sequence key** in de "
+                    "metadata, dus er kan geen multi-sequence-model op getraind worden. "
+                    f"(gedetecteerd: key={table_meta.sequence_key!r}, "
+                    f"index={table_meta.sequence_index!r})"
+                )
+                st.stop()
+
             model = PARSynthesizer(metadata, epochs=128, verbose=False)
             model.fit(src.df)
             st.session_state["synth"] = model.sample(num_sequences=cfg.n_sequences)
