@@ -61,11 +61,7 @@ def _list_demos(modality: str) -> list[str]:
     return get_available_demos(modality=modality)["dataset_name"].tolist()
 
 
-# cache_resource, niet cache_data: de teruggegeven SDV-Metadata is een stateful
-# object. cache_data serialiseert de return, en dat kan de sequence_key/-index van
-# longitudinale demo's laten wegvallen (PAR faalt dan met "geen sequence key").
-# cache_resource geeft hetzelfde object terug, dus de metadata blijft intact.
-@st.cache_resource
+@st.cache_data
 def _load_demo(name: str, modality: str) -> tuple[pd.DataFrame, object]:
     from sdv.datasets.demo import download_demo
 

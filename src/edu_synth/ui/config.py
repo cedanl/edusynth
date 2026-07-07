@@ -139,6 +139,32 @@ def _render_distributions(df: pd.DataFrame, col_types: dict[str, str]) -> dict[s
     return chosen
 
 
+def _render_seq_column_selectors(
+    df: pd.DataFrame, default_key: str | None, default_index: str | None
+) -> tuple[str, str]:
+    """Twee selectboxes voor sequence key + index, met gedetecteerde defaults.
+
+    Gedeeld door de upload- en demo-flow zodat de gebruiker in beide gevallen de
+    kolommen zelf kiest en corrigeert.
+    """
+    cols = list(df.columns)
+    c1, c2 = st.columns(2)
+    seq_key = c1.selectbox(
+        "Sequence key — ID per entiteit",
+        cols,
+        index=cols.index(default_key) if default_key in cols else 0,
+    )
+    idx_default = default_index if default_index in cols else cols[0]
+    seq_idx = c2.selectbox(
+        "Sequence index — tijdkolom",
+        cols,
+        index=cols.index(idx_default),
+    )
+    if seq_key == seq_idx:
+        st.warning("Kies verschillende kolommen voor sequence key en index.")
+    return seq_key, seq_idx
+
+
 def render_upload_sequential(df: pd.DataFrame) -> SequentialConfig | None:
     """Longitudinale upload-flow: detecteer + bevestig sequence key/index.
 
@@ -161,26 +187,12 @@ def render_upload_sequential(df: pd.DataFrame) -> SequentialConfig | None:
     if not is_longitudinal:
         return None
 
-    cols = list(df.columns)
     with st.expander("Longitudinale configuratie", expanded=True):
         st.caption(
             "Voor longitudinale data gebruikt de app de PAR-synthesizer, die de "
             "volgorde per entiteit behoudt. Training kan enkele minuten duren."
         )
-        c1, c2 = st.columns(2)
-        seq_key = c1.selectbox(
-            "Sequence key — ID per entiteit",
-            cols,
-            index=cols.index(default_key) if default_key in cols else 0,
-        )
-        idx_default = default_index if default_index in cols else cols[0]
-        seq_idx = c2.selectbox(
-            "Sequence index — tijdkolom",
-            cols,
-            index=cols.index(idx_default),
-        )
-        if seq_key == seq_idx:
-            st.warning("Kies verschillende kolommen voor sequence key en index.")
+        seq_key, seq_idx = _render_seq_column_selectors(df, default_key, default_index)
 
     n_sequences = int(
         st.number_input(
@@ -267,21 +279,29 @@ def render_constraints(df: pd.DataFrame) -> list[dict]:
 
 
 def render_sequential(df: pd.DataFrame, demo_meta: object) -> SequentialConfig:
+    """Longitudinale demo-flow: detecteer + bevestig sequence key/index.
+
+    SDV's demo-metadata heeft niet altijd een sequence key gezet (bv.
+    SelfRegulationSCP1 → PAR faalt met "geen sequence key"). We nemen de key/index
+    uit de demo-metadata over als die er zijn, en detecteren anders zelf — net als
+    bij een upload — zodat de gebruiker altijd geldige kolommen kiest.
+    """
+    from edu_synth.core.synthesize import infer_sequence_columns
+
     table_meta = list(demo_meta.tables.values())[0]
-    seq_key = table_meta.sequence_key
-    seq_idx = table_meta.sequence_index
+    _, det_key, det_index = infer_sequence_columns(df)
+    default_key = table_meta.sequence_key or det_key
+    default_index = table_meta.sequence_index or det_index
 
     with st.expander("Sequentie-configuratie", expanded=True):
-        c1, c2 = st.columns(2)
-        c1.text_input("Sequence key", value=seq_key or "(niet ingesteld)", disabled=True)
-        c2.text_input("Sequence index", value=seq_idx or "(niet ingesteld)", disabled=True)
+        seq_key, seq_idx = _render_seq_column_selectors(df, default_key, default_index)
 
     n_sequences = int(
         st.number_input(
             "Aantal sequenties",
             min_value=1,
             max_value=10_000,
-            value=min(10, df[seq_key].nunique()) if seq_key else 10,
+            value=min(10, df[seq_key].nunique()),
         )
     )
     seed = _render_seed()
