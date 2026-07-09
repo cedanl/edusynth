@@ -215,7 +215,11 @@ def render(
     seq_info: dict | None = None,
     metadata_dict: dict | None = None,
     real_metadata_dict: dict | None = None,
+    synthesizer: str | None = None,
 ) -> None:
+    # Naam van de daadwerkelijk gebruikte synthesizer, voor het rapport en de code.
+    # Valt terug op de modaliteit-default als de app 'm (nog) niet doorgeeft.
+    synth_name = synthesizer or ("sequential_copula" if modality == "sequential" else "gaussian")
     with st.spinner("Validatie en privacyanalyse berekenen…"):
         report = evaluate(df, synth, metadata_dict or real_metadata_dict)
         priv = evaluate_privacy(df, synth, primary_key=primary_key)
@@ -280,6 +284,7 @@ def render(
             sdm=sdm,
             seq=seq,
             n_training_rows=len(df),
+            synthesizer=synth_name,
         )
 
 
@@ -534,11 +539,16 @@ def _render_distributions(df: pd.DataFrame, synth: pd.DataFrame, report: Report)
                     color_discrete_map={"echt": NPULS["blauw"], "synthetisch": NPULS["oranje"]},
                 )
             else:
+                # Categorieën als string tellen: echt en synthetisch kunnen na
+                # synthese verschillende waarde-types hebben (bv. int vs str), en
+                # dan crasht het samenvoegen van de twee value_counts-indexen op het
+                # sorteren ('<' not supported between int and str). String-index is
+                # altijd sorteerbaar en voor een verdelingsstaafje prima.
                 counts = (
                     pd.DataFrame(
                         {
-                            "echt": df[col_name].value_counts(normalize=True),
-                            "synthetisch": synth[col_name].value_counts(normalize=True),
+                            "echt": df[col_name].astype(str).value_counts(normalize=True),
+                            "synthetisch": synth[col_name].astype(str).value_counts(normalize=True),
                         }
                     )
                     .fillna(0)
@@ -618,6 +628,7 @@ def _render_download(
     sdm: SDMetricsReport,
     seq: SequentialReport | None,
     n_training_rows: int,
+    synthesizer: str = "gaussian",
 ) -> None:
     import json
     from datetime import date
@@ -641,7 +652,7 @@ def _render_download(
         priv=priv,
         sdm=sdm,
         recommendation=recommendation,
-        synthesizer="sequential_copula" if modality == "sequential" else "gaussian",
+        synthesizer=synthesizer,
         n_training_rows=n_training_rows,
         n_generated_rows=n_generated,
         sdv_version=sdv_version,
@@ -667,7 +678,7 @@ def _render_download(
 
     with st.expander("Reproductie & Parameters", expanded=False):
         params: dict = {
-            "synthesizer": "gaussian",
+            "synthesizer": synthesizer,
             "n_rows_or_sequences": n_generated,
             "modality": modality or "single_table",
             "sdv_version": sdv_version,
@@ -741,6 +752,7 @@ def _render_download(
                 random_seed,
                 seq_info,
                 numerical_distributions,
+                synthesizer,
             )
             st.code(py_code, language="python")
             requirements_txt = f"sdv=={sdv_version}\npandas>=2.0\npyyaml>=6.0\n"
@@ -762,15 +774,15 @@ def _build_code(
     random_seed: int | None = None,
     seq_info: dict | None = None,
     numerical_distributions: dict[str, str] | None = None,
+    synthesizer: str = "gaussian",
 ) -> str:
     version_comment = f"# sdv=={sdv_version}\n" if sdv_version else ""
     # np.random.seed() vóór fit() maakt de output reproduceerbaar (zie set_seed).
     seed_import = "import numpy as np\n" if random_seed is not None else ""
     seed_line = f"\nnp.random.seed({random_seed})" if random_seed is not None else ""
     if modality == "sequential":
-        # Lichte, niet-neurale sequentiële synthesizer van edu-synth (wide-reshape +
-        # GaussianCopula). Voor een eigen upload kies je zelf sequence key/index; bij
-        # demo-data komen die uit de gedetecteerde kolommen.
+        # Voor een eigen upload kies je zelf sequence key/index; bij demo-data komen
+        # die uit de gedetecteerde kolommen.
         key = seq_info["key"] if seq_info else "student_id"
         idx = seq_info["index"] if seq_info else "jaar"
         load = (
@@ -780,6 +792,28 @@ def _build_code(
             f'real, _ = download_demo(modality="sequential", dataset_name="{demo_name}")'
         )
         seed_arg = f", seed={random_seed}" if random_seed is not None else ""
+        if synthesizer == "par":
+            # PAR (deep learning) van SDV — de zwaardere, optionele keuze.
+            seed_setup = (
+                f"import numpy as np\n\nnp.random.seed({random_seed})\n"
+                if random_seed is not None
+                else ""
+            )
+            return f"""\
+{version_comment}import pandas as pd
+from edu_synth.core.synthesize import build_sequential_metadata
+from sdv.sequential import PARSynthesizer
+
+{load}
+
+{seed_setup}metadata = build_sequential_metadata(real, seq_key="{key}", seq_index="{idx}")
+synthesizer = PARSynthesizer(metadata, epochs=128, verbose=True)
+synthesizer.fit(real)
+synth = synthesizer.sample(num_sequences={n_generated})
+synth.to_csv("synthetisch.csv", index=False)
+"""
+        # Lichte, niet-neurale sequentiële synthesizer van edu-synth (wide-reshape +
+        # GaussianCopula).
         return f"""\
 {version_comment}import pandas as pd
 from edu_synth.core.synthesize import fit_sequential, sample_sequential

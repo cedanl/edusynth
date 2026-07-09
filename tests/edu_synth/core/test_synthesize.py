@@ -18,12 +18,14 @@ from edu_synth.core.synthesize import (
     build_sequential_metadata,
     detect_datetime_format,
     fit,
+    fit_par,
     fit_sequential,
     infer_column_hints,
     infer_sequence_columns,
     is_skewed,
     recommend_numerical_distributions,
     sample,
+    sample_par,
     sample_sequential,
 )
 
@@ -312,6 +314,72 @@ def test_fit_sequential_learns_terminal_states():
     df = _doorstroom_df()
     model = fit_sequential(df, "student_id", "jaar", seed=0)
     assert model.terminal["status"] == {"gediplomeerd", "uitgestroomd"}
+
+
+def test_sample_sequential_categorical_column_is_single_typed():
+    """Reconstructie mag geen int/str-mix teruggeven; anders crasht de verdelingsplot."""
+    df = _doorstroom_df()
+    model = fit_sequential(df, "student_id", "jaar", seed=3)
+    out = sample_sequential(model, n_sequences=30)
+    # value_counts van echt + synth samenvoegen (zoals de app doet) mag niet crashen.
+    combined = pd.DataFrame(
+        {
+            "echt": df["status"].astype(str).value_counts(),
+            "synth": out["status"].astype(str).value_counts(),
+        }
+    )
+    assert not combined.empty
+
+
+def test_fit_sequential_refuses_non_longitudinal():
+    # Eén tijdstap per entiteit → niet longitudinaal.
+    df = pd.DataFrame({"id": [1, 2, 3], "jaar": [1, 1, 1], "x": [10, 20, 30]})
+    with pytest.raises(ValueError, match="niet longitudinaal"):
+        fit_sequential(df, "id", "jaar")
+
+
+def test_fit_sequential_refuses_degenerate_wide():
+    # 3 entiteiten, 4 features × 3 tijdstappen = 12 dimensies ≥ 3 entiteiten.
+    df = pd.DataFrame(
+        {
+            "id": np.repeat([1, 2, 3], 3),
+            "jaar": [1, 2, 3] * 3,
+            "a": range(9),
+            "b": range(9),
+            "c": range(9),
+            "d": range(9),
+        }
+    )
+    with pytest.raises(ValueError, match="Te veel kolommen"):
+        fit_sequential(df, "id", "jaar")
+
+
+def test_fit_par_returns_long_format():
+    df = _longitudinal_df()
+    model = fit_par(df, "student_id", "studiejaar", epochs=1, seed=1)
+    out = sample_par(model, n_sequences=3)
+    assert set(out.columns) == set(df.columns)
+    assert out["student_id"].nunique() == 3
+
+
+def test_fit_par_progress_reports_increasing_fractions():
+    """De progress-callback vuurt per epoch met een oplopende fractie tot 1.0."""
+    df = _longitudinal_df()
+    seen: list[float] = []
+    fit_par(df, "student_id", "studiejaar", epochs=3, seed=1, progress=seen.append)
+    assert len(seen) == 3
+    assert seen == sorted(seen)  # monotoon oplopend
+    assert seen[-1] == pytest.approx(1.0)
+    assert all(0 < f <= 1.0 for f in seen)
+
+
+def test_par_progress_restores_original_tqdm():
+    """De tqdm-monkeypatch mag na afloop niets achterlaten in deepecho."""
+    import deepecho.models.par as parmod
+
+    before = parmod.tqdm
+    fit_par(_longitudinal_df(), "student_id", "studiejaar", epochs=1, progress=lambda _f: None)
+    assert parmod.tqdm is before
 
 
 # ── Cross-column constraints ─────────────────────────────────────────────────────

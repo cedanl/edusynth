@@ -45,7 +45,11 @@ Heeft een upload meerdere rijen per entiteit over de tijd (bv. één rij per stu
 2. **Genereren** — de copula leert de gezamenlijke verdeling inclusief een expliciete reekslengte, en trekt nieuwe wide-rijen.
 3. **Terugzetten** — elke synthetische rij wordt teruggevouwen naar het originele long-formaat. Twee regels houden de reeksen geldig: een reeks stopt bij een **eindstaat** (een categorie die in de echte data nooit een opvolger heeft, bv. gediplomeerd/uitgestroomd — automatisch afgeleid), en de lengte van reeksen zónder eindstaat komt uit de meegemodelleerde reekslengte.
 
-Dit vervangt SDV's `PARSynthesizer` (deep learning). PAR traint op CPU minutenlang en scoort matig op kleine onderwijsdatasets; de doelgroep draait lokaal zonder GPU. De copula-aanpak fit én samplet in seconden op CPU, behoudt de doorstroomkansen en genereert zowel categorische staten als numerieke kolommen per tijdstap.
+Deze copula-aanpak is de aanbevolen default. Hij fit én samplet in seconden op CPU, behoudt de doorstroomkansen en genereert zowel categorische staten als numerieke kolommen per tijdstap.
+
+### PAR als optie
+
+Onder *Synthesizer kiezen (geavanceerd)* staat SDV's `PARSynthesizer` (deep learning, LSTM) als alternatief. PAR is structureel trager — op CPU minuten in plaats van seconden — en scoort op kleine onderwijsdatasets vaak matiger, maar kan soms complexere temporele patronen leren. Kies PAR alleen als de copula tekortschiet. Het aantal epochs is instelbaar en de training toont een voortgangsbalk in procenten.
 
 ## Relatie tot SDV
 

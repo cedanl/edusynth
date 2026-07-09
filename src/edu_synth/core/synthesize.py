@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import random
 import re
+from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -547,6 +549,28 @@ def fit_sequential(
     pos = {lvl: i + 1 for i, lvl in enumerate(index_levels)}
     max_len = len(index_levels)
 
+    # Generieke vormchecks: blokkeer alleen data die deze aanpak echt niet aankan,
+    # ongeacht de dataset. (1) Zonder herhaalde entiteiten of tijdstappen is het
+    # niet longitudinaal. (2) Wordt de wide-tabel breder dan het aantal entiteiten
+    # (features × tijdstappen ≥ entiteiten), dan is de correlatiematrix onderbepaald
+    # en levert de synthese onbetrouwbare verbanden — beter weigeren dan misleiden.
+    n_entities = df[seq_key].nunique()
+    if max_len < 2 or n_entities < 2:
+        raise ValueError(
+            "Deze data is niet longitudinaal genoeg: er zijn te weinig tijdstappen "
+            f"({max_len}) of entiteiten ({n_entities}). Kies een dataset met meerdere "
+            "rijen per entiteit over de tijd."
+        )
+    n_wide_cols = len(feature_cols) * max_len
+    if n_wide_cols >= n_entities:
+        raise ValueError(
+            f"Te veel kolommen voor te weinig entiteiten: {len(feature_cols)} kolommen × "
+            f"{max_len} tijdstappen = {n_wide_cols} dimensies bij {n_entities} entiteiten. "
+            "De verbanden worden dan onbetrouwbaar. Laat kolommen weg, gebruik een dataset "
+            "met meer entiteiten, of kies onder 'Synthesizer kiezen' de PAR-synthesizer — "
+            "die verwerkt lange reeksen direct zonder deze beperking."
+        )
+
     cat_cols = [c for c in feature_cols if not pd.api.types.is_numeric_dtype(df[c])]
     terminal = _learn_terminal_states(df, seq_key, seq_index, cat_cols)
 
@@ -580,6 +604,25 @@ def fit_sequential(
 
 def _is_missing(val: Any) -> bool:
     return val is None or (isinstance(val, float) and pd.isna(val))
+
+
+def _coerce_like(s: pd.Series, dtype: Any) -> pd.Series:
+    """Zet *s* strak in *dtype* terug, zonder gemengde types over te houden.
+
+    Numerieke doel-dtype → altijd numeriek (zodat de kolom net als de echte data als
+    'numeriek' herkend wordt en niet half object blijft). Niet-numeriek → exact het
+    echte dtype; lukt dat niet, dan uniform string (één type i.p.v. int/str-mix, wat
+    downstream het samenvoegen van verdelingen laat crashen).
+    """
+    if pd.api.types.is_numeric_dtype(dtype):
+        num = pd.to_numeric(s, errors="coerce")
+        if pd.api.types.is_integer_dtype(dtype) and not num.isna().any():
+            return num.astype(dtype)
+        return num
+    try:
+        return s.astype(dtype)
+    except (ValueError, TypeError):
+        return s.astype(str)
 
 
 def _first_terminal_pos(row: pd.Series, model: SequentialCopulaModel) -> int | None:
@@ -624,12 +667,81 @@ def sample_sequential(model: SequentialCopulaModel, n_sequences: int) -> pd.Data
 
     out = pd.DataFrame(rows)
     for feat, dtype in model.feature_dtypes.items():
-        try:
-            out[feat] = out[feat].astype(dtype)
-        except (ValueError, TypeError):
-            pass
-    try:
-        out[model.seq_index] = out[model.seq_index].astype(model.index_dtype)
-    except (ValueError, TypeError):
-        pass
+        out[feat] = _coerce_like(out[feat], dtype)
+    out[model.seq_index] = _coerce_like(out[model.seq_index], model.index_dtype)
     return out.reindex(columns=model.original_columns)
+
+
+# ── PAR (deep learning) — optionele zwaardere synthesizer ────────────────────────
+#
+# PAR is SDV's neurale sequentiële synthesizer (LSTM). Structureel trager dan de
+# lichte copula (op CPU minuten i.p.v. seconden), maar kan complexere temporele
+# patronen leren. We bieden 'm als bewuste keuze naast fit_sequential; de copula
+# blijft de aanbevolen default (zie issue #77).
+
+
+@contextmanager
+def _par_progress(callback: Callable[[float], None] | None):
+    """Rapporteer PAR-trainingsvoortgang per epoch via *callback* (fractie 0–1).
+
+    PAR (deepecho) heeft geen callback-API; de enige voortgangsbron is de interne
+    ``tqdm`` over de epochs. We vervangen die tijdelijk door een shim die per epoch
+    ``callback(voltooide_epoch / totaal)`` aanroept en de originele ``tqdm`` daarna
+    weer terugzet. Zonder callback doet dit niets (geen patch).
+    """
+    if callback is None:
+        yield
+        return
+
+    import deepecho.models.par as parmod
+
+    original_tqdm = parmod.tqdm
+
+    class _ProgressTqdm:
+        def __init__(self, iterable=None, **_kwargs):
+            self._items = list(iterable) if iterable is not None else []
+            self._total = len(self._items) or 1
+
+        def __iter__(self):
+            for i, item in enumerate(self._items, start=1):
+                callback(i / self._total)
+                yield item
+
+        def set_description(self, *_args, **_kwargs):
+            pass
+
+    parmod.tqdm = _ProgressTqdm
+    try:
+        yield
+    finally:
+        parmod.tqdm = original_tqdm
+
+
+def fit_par(
+    df: pd.DataFrame,
+    seq_key: str,
+    seq_index: str,
+    epochs: int = 128,
+    seed: int | None = None,
+    progress: Callable[[float], None] | None = None,
+) -> Any:
+    """Train SDV's ``PARSynthesizer`` (deep learning) op longitudinale *df*.
+
+    Zwaarder dan :func:`fit_sequential` (LSTM op CPU) maar kan complexere temporele
+    patronen leren. *progress* is een optionele callback die per epoch de voltooide
+    fractie (0–1) krijgt — de app koppelt die aan een voortgangsbalk.
+    """
+    from sdv.sequential import PARSynthesizer
+
+    metadata = build_sequential_metadata(df, seq_key, seq_index)
+    if seed is not None:
+        set_seed(seed)
+    synthesizer = PARSynthesizer(metadata, epochs=epochs, verbose=False)
+    with _par_progress(progress):
+        synthesizer.fit(df)
+    return synthesizer
+
+
+def sample_par(model: Any, n_sequences: int) -> pd.DataFrame:
+    """Genereer *n_sequences* synthetische reeksen met een gefitte ``PARSynthesizer``."""
+    return model.sample(num_sequences=n_sequences)
