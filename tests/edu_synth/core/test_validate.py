@@ -21,9 +21,13 @@ from edu_synth.core.validate import (
     evaluate_sdmetrics,
     evaluate_sequential,
     improvement_advice,
+    mean_trajectory,
     score_verdict,
     sequential_recommendation,
     sequential_verdict,
+    state_distribution,
+    transition_matrices,
+    transition_matrix,
     usage_recommendation,
     worst_sequential_component,
 )
@@ -1018,3 +1022,48 @@ def test_build_validation_report_omits_temporal_when_no_seq():
         generated_at="2026-06-15",
     )
     assert "temporal" not in out
+
+
+def test_transition_matrix_rows_sum_to_one():
+    df = _longitudinal({s: ["jaar1", "jaar2", "diploma"] for s in "abcde"})
+    m = transition_matrix(df, "studentnummer", "jaar", "status")
+    assert m is not None
+    # Elke bronstaat verdeelt kans 1 over de volgende staten.
+    assert np.allclose(m.sum(axis=1).to_numpy(), 1.0)
+    # jaar1 gaat deterministisch naar jaar2 in deze data.
+    assert m.loc["jaar1", "jaar2"] == 1.0
+
+
+def test_transition_matrix_none_without_transitions():
+    df = _longitudinal({s: ["jaar1"] for s in "abc"})  # sequenties van lengte 1
+    assert transition_matrix(df, "studentnummer", "jaar", "status") is None
+
+
+def test_transition_matrices_are_aligned():
+    real = _longitudinal({s: ["jaar1", "jaar2", "diploma"] for s in "abcde"})
+    synth = _longitudinal({s: ["jaar1", "uitval", "diploma"] for s in "fghij"})
+    matrices = transition_matrices(real, synth, "studentnummer", "jaar", "status")
+    assert matrices is not None
+    real_m, synth_m = matrices
+    # Beide matrices delen exact dezelfde staten (unie), zodat ze cel-voor-cel te vergelijken zijn.
+    assert list(real_m.index) == list(synth_m.index)
+    assert list(real_m.columns) == list(synth_m.columns)
+    assert "uitval" in real_m.columns  # staat komt alleen in synth voor, maar zit in beide
+
+
+def test_mean_trajectory_sorted_by_time():
+    df = _longitudinal(
+        {s: ["a", "a", "a"] for s in "abcde"},
+        ec={s: [10, 20, 30] for s in "abcde"},
+    )
+    traj = mean_trajectory(df, "jaar", "ec")
+    assert list(traj.index) == [2019, 2020, 2021]
+    assert traj.tolist() == [10.0, 20.0, 30.0]
+
+
+def test_state_distribution_rows_sum_to_one():
+    df = _longitudinal({s: ["jaar1", "jaar2", "diploma"] for s in "abcde"})
+    dist = state_distribution(df, "jaar", "status")
+    assert np.allclose(dist.sum(axis=1).to_numpy(), 1.0)
+    # In 2019 is iedereen "jaar1".
+    assert dist.loc[2019, "jaar1"] == 1.0

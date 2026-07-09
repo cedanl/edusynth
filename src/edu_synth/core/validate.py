@@ -557,6 +557,20 @@ def _ordered_sequences(df: pd.DataFrame, seq_key: str, seq_index: str):
     return df.sort_values([seq_key, seq_index]).groupby(seq_key, sort=False)
 
 
+def _transition_pairs(df: pd.DataFrame, seq_key, seq_index, col) -> pd.DataFrame:
+    """(from, to)-paren van opeenvolgende waarden per entiteit, tijdgesorteerd.
+
+    Eén rij per overgang binnen een sequentie; sequenties van lengte 1 leveren niets.
+    """
+    froms, tos = [], []
+    for _, g in _ordered_sequences(df, seq_key, seq_index):
+        vals = g[col].to_numpy()
+        if len(vals) >= 2:
+            froms.extend(vals[:-1])
+            tos.extend(vals[1:])
+    return pd.DataFrame({"from": froms, "to": tos})
+
+
 def _transition_distance(
     real: pd.DataFrame, synth: pd.DataFrame, seq_key, seq_index, col
 ) -> float | None:
@@ -567,17 +581,8 @@ def _transition_distance(
     veelvoorkomende overgang zwaarder dan een zeldzame. Geeft ``None`` als er geen
     overgangen zijn (sequenties van lengte 1).
     """
-
-    def pairs(frame: pd.DataFrame) -> pd.DataFrame:
-        froms, tos = [], []
-        for _, g in _ordered_sequences(frame, seq_key, seq_index):
-            vals = g[col].to_numpy()
-            if len(vals) >= 2:
-                froms.extend(vals[:-1])
-                tos.extend(vals[1:])
-        return pd.DataFrame({"from": froms, "to": tos})
-
-    real_t, synth_t = pairs(real), pairs(synth)
+    real_t = _transition_pairs(real, seq_key, seq_index, col)
+    synth_t = _transition_pairs(synth, seq_key, seq_index, col)
     if real_t.empty:
         return None
 
@@ -693,6 +698,55 @@ def evaluate_sequential(
         length_ok=length_distance < _SCORE_OK,
         rows=rows,
     )
+
+
+def transition_matrix(df: pd.DataFrame, seq_key, seq_index, col) -> pd.DataFrame | None:
+    """Rij-genormaliseerde overgangsmatrix (bronstaat × volgende staat) voor één kolom.
+
+    Elke rij telt op tot 1: de kans om vanuit die bronstaat naar elke volgende staat te
+    gaan. Geeft ``None`` als er geen overgangen zijn (alle sequenties lengte 1).
+    """
+    pairs = _transition_pairs(df, seq_key, seq_index, col)
+    if pairs.empty:
+        return None
+    return pd.crosstab(pairs["from"], pairs["to"], normalize="index")
+
+
+def transition_matrices(
+    real: pd.DataFrame, synth: pd.DataFrame, seq_key, seq_index, col
+) -> tuple[pd.DataFrame, pd.DataFrame] | None:
+    """Overgangsmatrices van echt en synthetisch, uitgelijnd op dezelfde staten.
+
+    Beide matrices delen dezelfde rij- en kolomvolgorde (unie van alle staten), zodat
+    de twee heatmaps cel-voor-cel te vergelijken zijn. ``None`` als de echte data geen
+    overgangen kent.
+    """
+    real_m = transition_matrix(real, seq_key, seq_index, col)
+    if real_m is None:
+        return None
+    synth_m = transition_matrix(synth, seq_key, seq_index, col)
+    if synth_m is None:
+        synth_m = pd.DataFrame()
+
+    states = real_m.index.union(real_m.columns)
+    if not synth_m.empty:
+        states = states.union(synth_m.index).union(synth_m.columns)
+    real_m = real_m.reindex(index=states, columns=states, fill_value=0.0)
+    synth_m = synth_m.reindex(index=states, columns=states, fill_value=0.0)
+    return real_m, synth_m
+
+
+def mean_trajectory(df: pd.DataFrame, seq_index, col) -> pd.Series:
+    """Gemiddelde van een numerieke kolom per tijdstap, gesorteerd op de tijd-index."""
+    return df.groupby(seq_index)[col].mean().sort_index()
+
+
+def state_distribution(df: pd.DataFrame, seq_index, col) -> pd.DataFrame:
+    """Aandeel van elke staat per tijdstap (categorisch): rijen = tijd, kolommen = staten.
+
+    Elke rij telt op tot 1: de verdeling over de mogelijke staten op dat tijdstip.
+    """
+    return pd.crosstab(df[seq_index], df[col], normalize="index")
 
 
 def score_verdict(max_score: float, n_failed: int, n_components: int) -> tuple[str, str]:

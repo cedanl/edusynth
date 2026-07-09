@@ -77,7 +77,15 @@ Longitudinale data heeft meerdere rijen per entiteit (bijvoorbeeld één rij per
 
 De overgangsmatrix-afstand is een TV-afstand per bronstaat, gewogen naar hoe vaak die bronstaat in de echte data voorkomt — een veelvoorkomende overgang telt zwaarder dan een zeldzame. De sequentielengte-verdeling wordt vergeleken met de genormaliseerde Wasserstein-afstand, net als numerieke kolommen. Id-kolommen, de sequentie-key en de tijd-index zelf blijven buiten beschouwing.
 
-Bij longitudinale synthese toont de app deze signalen als scorecard **Tijdsgedrag** met een gewone-taal-oordeel, op dezelfde plek waar tabulaire data de scorecard Samenhang krijgt. Het tijdsgedrag telt mee in het overall bruikbaarheidsoordeel, en de temporele scores komen mee in de `validation_report.json`-export onder `temporal`.
+Bij longitudinale synthese toont de app deze signalen als scorecard **Tijdsgedrag** met een gewone-taal-oordeel, op dezelfde plek waar tabulaire data de scorecard Samenhang krijgt. Het tijdsgedrag telt mee in het overall bruikbaarheidsoordeel, en de temporele scores komen mee in de `validation_report.json`-export onder `temporal`. De tabulaire samenhang-sectie (correlaties over de platgeslagen kolommen) wordt bij longitudinale data weggeklapt — die is grotendeels ruis naast de temporele metrieken.
+
+Naast de scores toont de tab _Distributies_ bij longitudinale data een **Tijd**-sectie met de metriek als beeld, echt vs. synthetisch:
+
+- **Overgangsmatrix-heatmaps** (categorische kolom) — echt en synthetisch naast elkaar; cellen die verschillen zijn de doorstroomkansen die de synthese mist.
+- **Staatverdeling over de tijd** (categorische kolom) — hoe de verdeling over de statussen per tijdstap verloopt.
+- **Gemiddelde per tijdstap** (numerieke kolom) — wanneer in de tijd de synthetische reeks van de echte afwijkt.
+
+Standaard toont de sectie de sterkst afwijkende kolom; via een keuzemenu bekijk je een andere kolom.
 
 ## Gebruiksoordeel — een vuistregel, geen norm
 
@@ -115,9 +123,15 @@ In de tab _Download & Reproductie_ staat naast de CSV een knop **Download valida
 
 Zo leg je het volledige oordeel reproduceerbaar vast.
 
+## Validatierapport exporteren (PDF)
+
+Naast de JSON staat in dezelfde tab een knop **Download rapport (PDF)**. Het PDF is een leesbaar rapport om te delen of archiveren en bevat het oordeel, de scorekaarten, de verdeling per kolom, het tijdsgedrag-detail (bij longitudinale data), de privacymaten en de reproductie-parameters. Het PDF put uit dezelfde bron als de JSON, dus beide blijven consistent.
+
+Het PDF wordt headless gegenereerd met [reportlab](https://www.reportlab.com/) — pure Python, zonder systeemafhankelijkheden, dus het werkt ook bij een lokale `pip install` op Windows en macOS.
+
 ## Distributieplots
 
-De app toont naast de scores ook histogrammen en staafdiagrammen van echte vs. synthetische data per kolom — zo zie je direct waar afwijkingen zitten.
+De app toont naast de scores ook histogrammen en staafdiagrammen van echte vs. synthetische data per kolom — zo zie je direct waar afwijkingen zitten. Bij longitudinale data komt daar de **Tijd**-sectie bij (zie hierboven) met de overgangs- en trajectbeelden over de tijd.
 
 ## Privacy — DCR / NNDR
 

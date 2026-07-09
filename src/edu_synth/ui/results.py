@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 import yaml
 
+from edu_synth.core.report_pdf import build_report_pdf
 from edu_synth.core.validate import (
     RECOMMENDATION_DISCLAIMER,
     PairsReport,
@@ -22,9 +25,12 @@ from edu_synth.core.validate import (
     evaluate_sdmetrics,
     evaluate_sequential,
     improvement_advice,
+    mean_trajectory,
     score_verdict,
     sequential_recommendation,
     sequential_verdict,
+    state_distribution,
+    transition_matrices,
     usage_recommendation,
     worst_sequential_component,
 )
@@ -96,17 +102,11 @@ def _bruikbaarheid_verdict(
     return "Hoge bruikbaarheid", "laag"
 
 
-def _sequential_report(
-    df: pd.DataFrame,
-    synth: pd.DataFrame,
-    modality: str | None,
-    metadata_dict: dict | None = None,
-) -> SequentialReport | None:
-    """Bereken de temporele validatie voor longitudinale data, anders None.
+def _sequence_fields(modality: str | None, metadata_dict: dict | None) -> tuple[str, str] | None:
+    """(sequence_key, sequence_index) uit de SDV-metadata, of None bij tabulaire data.
 
-    De sequence-key en -index komen uit de SDV-metadata (``tables.data``), zodat
-    dit werkt voor zowel een eigen upload als een demo-dataset. Bij tabulaire
-    synthese of ontbrekende sequence-velden gebeurt er niets.
+    Werkt voor zowel een eigen upload als een demo-dataset; None zodra de modaliteit niet
+    sequentieel is of de sequence-velden ontbreken.
     """
     if modality != "sequential":
         return None
@@ -115,7 +115,21 @@ def _sequential_report(
     seq_index = table_meta.get("sequence_index")
     if not seq_key or not seq_index:
         return None
-    return evaluate_sequential(df, synth, seq_key, seq_index, table_meta)
+    return seq_key, seq_index
+
+
+def _sequential_report(
+    df: pd.DataFrame,
+    synth: pd.DataFrame,
+    modality: str | None,
+    metadata_dict: dict | None = None,
+) -> SequentialReport | None:
+    """Bereken de temporele validatie voor longitudinale data, anders None."""
+    fields = _sequence_fields(modality, metadata_dict)
+    if fields is None:
+        return None
+    table_meta = (metadata_dict or {}).get("tables", {}).get("data", {})
+    return evaluate_sequential(df, synth, *fields, table_meta)
 
 
 def _scorecard(col, label: str, verdict: str, risk: str) -> None:
@@ -201,6 +215,48 @@ def _download_dialog(csv_bytes: bytes, verdict: dict, recommendation: str) -> No
     )
 
 
+def _assemble_validation_report(
+    report: Report,
+    priv: PrivacyReport,
+    sdm: SDMetricsReport,
+    recommendation: str,
+    synthesizer: str,
+    n_training_rows: int,
+    n_generated: int,
+    random_seed: int | None,
+    seq: SequentialReport | None,
+) -> dict:
+    """Bouw de rapport-dict die zowel de JSON- als de PDF-export voedt (één bron)."""
+    import sdv as _sdv
+
+    return build_validation_report(
+        report=report,
+        priv=priv,
+        sdm=sdm,
+        recommendation=recommendation,
+        synthesizer=synthesizer,
+        n_training_rows=n_training_rows,
+        n_generated_rows=n_generated,
+        sdv_version=_sdv.__version__,
+        generated_at=date.today().isoformat(),
+        random_seed=random_seed,
+        intended_use=st.session_state.get("intended_use"),
+        seq=seq,
+    )
+
+
+def _render_pdf_download(pdf_bytes: bytes, key: str) -> None:
+    """Downloadknop voor het PDF-rapport; *key* onderscheidt de plek (banner vs. tab)."""
+    st.download_button(
+        "⬇ Download rapport (PDF)",
+        pdf_bytes,
+        file_name="validatierapport.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+        key=key,
+    )
+
+
 # ── Publieke interface ─────────────────────────────────────────────────────────
 def render(
     df: pd.DataFrame,
@@ -227,6 +283,7 @@ def render(
         pairs = evaluate_pairs(df, synth)
         sdm = evaluate_sdmetrics(df, synth, metadata_dict)
         seq = _sequential_report(df, synth, modality, metadata_dict)
+    seq_fields = _sequence_fields(modality, metadata_dict)
 
     verd_label, verd_risk = _verdeling_verdict(report)
     priv_label, priv_risk = _privacy_verdict(priv)
@@ -260,12 +317,25 @@ def render(
             )
         )
 
+    # PDF-rapport en JSON putten uit één dict, hier één keer opgebouwd. De PDF-knop staat
+    # direct bij het oordeel zodat je het resultaat (oordeel, aanbeveling, scores) meteen
+    # kunt meenemen zonder naar de Download-tab te hoeven.
+    validation_report = _assemble_validation_report(
+        report, priv, sdm, recommendation, synth_name, len(df), n_generated, random_seed, seq
+    )
+    pdf_bytes = build_report_pdf(validation_report, verdict)
+    _render_pdf_download(pdf_bytes, key="pdf_banner")
+    st.caption("Rapport met oordeel, aanbeveling, scores en drempels — om te delen of archiveren.")
+
     tab_val, tab_dist, tab_dl = st.tabs(
         ["Validatierapport", "Distributies", "Download & Reproductie"]
     )
     with tab_val:
         _render_validation(report, priv, verdict, pairs, primary_key, sdm, seq)
     with tab_dist:
+        if seq is not None and seq_fields is not None:
+            _render_temporal_plots(df, synth, seq, *seq_fields)
+            st.divider()
         _render_distributions(df, synth, report)
     with tab_dl:
         _render_download(
@@ -282,11 +352,8 @@ def render(
             recommendation=recommendation,
             metadata_dict=metadata_dict,
             real_metadata_dict=real_metadata_dict,
-            report=report,
-            priv=priv,
-            sdm=sdm,
-            seq=seq,
-            n_training_rows=len(df),
+            validation_report=validation_report,
+            pdf_bytes=pdf_bytes,
             synthesizer=synth_name,
         )
 
@@ -319,8 +386,16 @@ def _render_validation(
     if seq is not None:
         _render_sequential_detail(seq)
         st.divider()
-
-    _render_correlations(pairs)
+        # Bij longitudinale data draait de samenhang over platgeslagen wide-kolommen —
+        # grotendeels ruis naast de temporele metrieken. Weggeklapt, niet prominent.
+        with st.expander("Samenhang tussen kolommen (secundair bij longitudinaal)", expanded=False):
+            st.caption(
+                "Deze correlaties gaan over de tabulaire (platgeslagen) vorm van de data. "
+                "Voor longitudinale data zijn de temporele metrieken hierboven leidend."
+            )
+            _render_correlations(pairs)
+    else:
+        _render_correlations(pairs)
     st.divider()
 
     with st.expander("Statistisch detail — verdeling per kolom", expanded=False):
@@ -516,6 +591,105 @@ def _render_sequential_detail(seq: SequentialReport) -> None:
     )
 
 
+def _render_temporal_plots(
+    real: pd.DataFrame, synth: pd.DataFrame, seq: SequentialReport, seq_key: str, seq_index: str
+) -> None:
+    """Toon het tijdsgedrag als beeld: overgangsheatmaps (categorisch) of trajectlijn (numeriek).
+
+    Eén kolom tegelijk — standaard de sterkst afwijkende, zodat het beeld direct op het
+    probleem wijst. Categorisch krijgt de overgangsmatrix (waar gaat de doorstroom mis) plus
+    de staatverdeling over de tijd; numeriek krijgt het gemiddelde per tijdstap.
+    """
+    st.markdown("**Tijd — overgangen en trajecten** (echt vs. synthetisch)")
+    if not seq.available or not seq.rows:
+        st.info("Geen tijdsafhankelijke kolommen om te tonen.")
+        return
+
+    ranked = sorted(seq.rows, key=lambda r: r.get("score", 0.0), reverse=True)
+    col = st.selectbox(
+        "Kolom (standaard: sterkst afwijkend)",
+        [r["column"] for r in ranked],
+        key="temporal_plot_col",
+    )
+    kind = next(r["kind"] for r in ranked if r["column"] == col)
+    if kind == "transition":
+        _render_transition_heatmaps(real, synth, seq_key, seq_index, col)
+        _render_state_distribution(real, synth, seq_index, col)
+    else:
+        _render_mean_trajectory(real, synth, seq_index, col)
+
+
+def _render_transition_heatmaps(
+    real: pd.DataFrame, synth: pd.DataFrame, seq_key: str, seq_index: str, col: str
+) -> None:
+    matrices = transition_matrices(real, synth, seq_key, seq_index, col)
+    if matrices is None:
+        st.info("Geen overgangen om te tonen (sequenties van lengte 1).")
+        return
+    st.caption(
+        f"Doorstroomkansen voor `{col}`: elke rij (bronstaat) toont de kans naar elke "
+        "volgende staat. Cellen die tussen echt en synthetisch verschillen zijn overgangen "
+        "die de synthese mist."
+    )
+    labels = {"x": "naar", "y": "van", "color": "kans"}
+    cols = st.columns(2)
+    for c, matrix, titel in zip(cols, matrices, ("Echt", "Synthetisch")):
+        fig = px.imshow(
+            matrix,
+            title=titel,
+            labels=labels,
+            zmin=0,
+            zmax=1,
+            text_auto=".2f",
+            color_continuous_scale="Blues",
+            aspect="auto",
+        )
+        c.plotly_chart(apply_plotly_style(fig), use_container_width=True)
+
+
+def _render_state_distribution(
+    real: pd.DataFrame, synth: pd.DataFrame, seq_index: str, col: str
+) -> None:
+    def _long(df: pd.DataFrame, bron: str) -> pd.DataFrame:
+        dist = state_distribution(df, seq_index, col).reset_index()
+        return dist.melt(id_vars=seq_index, var_name=col, value_name="aandeel").assign(bron=bron)
+
+    long = pd.concat([_long(real, "echt"), _long(synth, "synthetisch")])
+    fig = px.area(
+        long,
+        x=seq_index,
+        y="aandeel",
+        color=col,
+        facet_col="bron",
+        title=f"Staatverdeling over de tijd — {col}",
+    )
+    st.plotly_chart(apply_plotly_style(fig), use_container_width=True)
+    st.caption("Toont hoe de verdeling over de statussen per tijdstap verloopt, echt vs. synth.")
+
+
+def _render_mean_trajectory(
+    real: pd.DataFrame, synth: pd.DataFrame, seq_index: str, col: str
+) -> None:
+    traj = pd.DataFrame(
+        {
+            "echt": mean_trajectory(real, seq_index, col),
+            "synthetisch": mean_trajectory(synth, seq_index, col),
+        }
+    ).reset_index()
+    long = traj.melt(id_vars=seq_index, var_name="bron", value_name="gemiddelde")
+    fig = px.line(
+        long,
+        x=seq_index,
+        y="gemiddelde",
+        color="bron",
+        markers=True,
+        title=f"Gemiddelde van {col} per tijdstap",
+        color_discrete_map={"echt": NPULS["blauw"], "synthetisch": NPULS["oranje"]},
+    )
+    st.plotly_chart(apply_plotly_style(fig), use_container_width=True)
+    st.caption("Toont wanneer in de tijd de synthetische reeks van de echte afwijkt.")
+
+
 def _render_sdmetrics(sdm: SDMetricsReport) -> None:
     """Geavanceerde sdmetrics QualityReport (niveau 3) — uitgebreide kwaliteitsmetrieken."""
     with st.expander("Geavanceerde kwaliteitsscore (sdmetrics)", expanded=False):
@@ -682,15 +856,11 @@ def _render_download(
     recommendation: str,
     metadata_dict: dict | None,
     real_metadata_dict: dict | None,
-    report: Report,
-    priv: PrivacyReport,
-    sdm: SDMetricsReport,
-    seq: SequentialReport | None,
-    n_training_rows: int,
+    validation_report: dict,
+    pdf_bytes: bytes,
     synthesizer: str = "gaussian",
 ) -> None:
     import json
-    from datetime import date
 
     import sdv as _sdv
 
@@ -706,20 +876,6 @@ def _render_download(
     if st.button("Download synthetische data", use_container_width=True, type="primary"):
         _download_dialog(csv_bytes, verdict, recommendation)
 
-    validation_report = build_validation_report(
-        report=report,
-        priv=priv,
-        sdm=sdm,
-        recommendation=recommendation,
-        synthesizer=synthesizer,
-        n_training_rows=n_training_rows,
-        n_generated_rows=n_generated,
-        sdv_version=sdv_version,
-        generated_at=date.today().isoformat(),
-        random_seed=random_seed,
-        intended_use=st.session_state.get("intended_use"),
-        seq=seq,
-    )
     st.download_button(
         "Download validation_report.json",
         json.dumps(validation_report, indent=2, ensure_ascii=False).encode("utf-8"),
@@ -728,6 +884,9 @@ def _render_download(
         use_container_width=True,
     )
     st.caption("Bevat alle scores en synthese-parameters. Bewaar het naast de CSV.")
+
+    _render_pdf_download(pdf_bytes, key="pdf_download_tab")
+    st.caption("Leesbaar rapport met oordeel, scores en parameters — om te delen of archiveren.")
 
     meta_summary = _summarize_metadata(metadata_dict or real_metadata_dict)
     if meta_summary:
