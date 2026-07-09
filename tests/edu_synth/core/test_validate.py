@@ -945,6 +945,39 @@ def test_worst_sequential_component_includes_length():
     assert worst["column"] is None
 
 
+def _failing_seq() -> SequentialReport:
+    return SequentialReport(
+        available=True,
+        length_distance=0.0,
+        length_ok=True,
+        rows=[{"column": "dim_2", "kind": "autocorrelation", "score": 0.84, "ok": False}],
+    )
+
+
+def test_improvement_advice_temporal_on_copula_suggests_par():
+    advice = improvement_advice(
+        Report(), pd.DataFrame({"x": [1, 2]}), seq=_failing_seq(), synthesizer="sequential_copula"
+    )
+    joined = " ".join(advice).lower()
+    assert "tijdsgedrag" in joined
+    assert "par-synthesizer" in joined  # copula → PAR aanraden mag
+
+
+def test_improvement_advice_temporal_on_par_is_not_circular():
+    advice = improvement_advice(
+        Report(), pd.DataFrame({"x": [1, 2]}), seq=_failing_seq(), synthesizer="par"
+    )
+    joined = " ".join(advice).lower()
+    assert "tijdsgedrag" in joined
+    assert "epochs" in joined  # ander handelingsperspectief
+    assert "par-synthesizer" not in joined  # geen circulaire "kies PAR"-hint
+
+
+def test_improvement_advice_no_temporal_advice_when_tabular():
+    advice = improvement_advice(Report(), pd.DataFrame({"x": [1, 2]}), seq=None)
+    assert not any("tijdsgedrag" in a.lower() for a in advice)
+
+
 def test_build_validation_report_includes_temporal_section():
     df = _longitudinal({s: ["jaar1", "jaar2", "diploma"] for s in "abcde"})
     seq = evaluate_sequential(df, df.copy(), "studentnummer", "jaar")

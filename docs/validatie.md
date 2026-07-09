@@ -99,8 +99,9 @@ Is het oordeel _Bruikbaar met voorbehoud_ of _Niet aanbevolen_, dan toont de app
 | Categorische kolom met veel unieke waarden | Laat de kolom weg of groepeer waarden |
 | Te weinig rijen (< 500) | Gebruik meer data voor stabielere synthese |
 | Hoog privacyrisico | Markeer identifiers als _ID_ of genereer minder rijen |
+| Afwijkend tijdsgedrag (longitudinaal) | Synthesizer-afhankelijk: draaide de synthese op de lichte copula, dan raadt de app de PAR-synthesizer aan; draaide hij al op PAR, dan epochs verhogen of meer entiteiten gebruiken |
 
-Bij een goed oordeel verschijnt het blok niet. De adviezen zijn suggesties op basis van de gemeten scores — geen garantie dat één aanpassing het oordeel omdraait.
+Het tijdsgedrag-advies is **synthesizer-bewust**: het raadt PAR alleen aan wanneer de synthese níét al op PAR draaide, zodat de suggestie nooit circulair is. Bij een goed oordeel verschijnt het blok niet. De adviezen zijn suggesties op basis van de gemeten scores — geen garantie dat één aanpassing het oordeel omdraait.
 
 ## Validatierapport exporteren (JSON)
 

@@ -855,23 +855,62 @@ _HIGH_CARDINALITY = 50  # categorische kolom met meer unieke waarden → kandida
 _MAX_ADVICE = 4  # niet overladen; alleen de belangrijkste punten
 
 
+def _temporal_advice(seq: SequentialReport | None, synthesizer: str | None) -> list[str]:
+    """Synthesizer-bewust advies bij afwijkend tijdsgedrag (leeg als het tijdsgedrag klopt).
+
+    De 'probeer PAR'-hint mag alleen bij de copula — draaide de synthese al op PAR, dan is
+    die hint circulair en geven we een ander handelingsperspectief (epochs/meer entiteiten).
+    """
+    if seq is None:
+        return []
+    driver = worst_sequential_component(seq)
+    if driver is None:
+        return []
+    wat = {
+        "transition": "de doorstroomkansen tussen statussen",
+        "autocorrelation": "de samenhang tussen tijdstappen",
+        "length": "de trajectlengtes",
+    }.get(driver["kind"], "het tijdsgedrag")
+    if synthesizer == "par":
+        kern = (
+            f"PAR bootst {wat} nog niet goed na. Verhoog het aantal epochs onder "
+            "*Synthesizer kiezen*, gebruik meer entiteiten, of houd er rekening mee dat "
+            "lange of continue reeksen intrinsiek lastig te synthetiseren zijn."
+        )
+    elif synthesizer == "sequential_copula":
+        kern = (
+            f"de lichte copula slaat de reeksen plat en mist zo {wat}. Kies onder "
+            "*Synthesizer kiezen* de PAR-synthesizer, die reeksen direct modelleert."
+        )
+    else:
+        kern = (
+            f"{wat} wijkt af van de echte data. Controleer of de sequence key/index klopt "
+            "en of er genoeg entiteiten zijn."
+        )
+    return [f"**Tijdsgedrag** — {kern}"]
+
+
 def improvement_advice(
     report: Report,
     real: pd.DataFrame,
     priv: PrivacyReport | None = None,
     numerical_distributions: dict[str, str] | None = None,
     pairs: PairsReport | None = None,
+    seq: SequentialReport | None = None,
+    synthesizer: str | None = None,
 ) -> list[str]:
     """Geef concrete verbeteradviezen, gericht op de slechtst scorende kolommen.
 
     Leeg bij goede kwaliteit. Elk advies koppelt een gemeten signaal (verkeerd
     kolomtype, verloren pieken, hoge cardinaliteit, te weinig rijen, privacyrisico,
-    omgeklapte correlatie) aan een actie in de app. Markdown-opmaak, bedoeld als
-    bulletlijst.
+    omgeklapte correlatie, afwijkend tijdsgedrag) aan een actie in de app.
+    Markdown-opmaak, bedoeld als bulletlijst.
 
     *numerical_distributions* is de actieve per-kolom verdeling, zodat een advies
     niet aanraadt wat al aanstaat (bv. ``gaussian_kde``). *pairs* voegt advies toe
-    over afwijkende verbanden tussen kolommen.
+    over afwijkende verbanden tussen kolommen. *seq* + *synthesizer* voegen
+    **synthesizer-bewust** temporeel advies toe: PAR aanraden mag alleen als de
+    synthese níét al op PAR draaide (anders is de hint circulair).
     """
     from edu_synth.core.synthesize import infer_column_hints
 
@@ -882,6 +921,8 @@ def improvement_advice(
             "**Privacy** — hoog risico op herleidbaarheid. Markeer identifiers "
             "(studentnummer, e-mail) als type *ID*, of genereer minder rijen."
         )
+
+    advice.extend(_temporal_advice(seq, synthesizer))
 
     hints = {h.name: h for h in infer_column_hints(real) if h.has_suggestion}
     modal_cols = {f["column"] for f in report.modal_flags}
