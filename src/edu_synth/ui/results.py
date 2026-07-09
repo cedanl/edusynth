@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -213,6 +215,48 @@ def _download_dialog(csv_bytes: bytes, verdict: dict, recommendation: str) -> No
     )
 
 
+def _assemble_validation_report(
+    report: Report,
+    priv: PrivacyReport,
+    sdm: SDMetricsReport,
+    recommendation: str,
+    synthesizer: str,
+    n_training_rows: int,
+    n_generated: int,
+    random_seed: int | None,
+    seq: SequentialReport | None,
+) -> dict:
+    """Bouw de rapport-dict die zowel de JSON- als de PDF-export voedt (één bron)."""
+    import sdv as _sdv
+
+    return build_validation_report(
+        report=report,
+        priv=priv,
+        sdm=sdm,
+        recommendation=recommendation,
+        synthesizer=synthesizer,
+        n_training_rows=n_training_rows,
+        n_generated_rows=n_generated,
+        sdv_version=_sdv.__version__,
+        generated_at=date.today().isoformat(),
+        random_seed=random_seed,
+        intended_use=st.session_state.get("intended_use"),
+        seq=seq,
+    )
+
+
+def _render_pdf_download(pdf_bytes: bytes, key: str) -> None:
+    """Downloadknop voor het PDF-rapport; *key* onderscheidt de plek (banner vs. tab)."""
+    st.download_button(
+        "⬇ Download rapport (PDF)",
+        pdf_bytes,
+        file_name="validatierapport.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+        key=key,
+    )
+
+
 # ── Publieke interface ─────────────────────────────────────────────────────────
 def render(
     df: pd.DataFrame,
@@ -273,6 +317,16 @@ def render(
             )
         )
 
+    # PDF-rapport en JSON putten uit één dict, hier één keer opgebouwd. De PDF-knop staat
+    # direct bij het oordeel zodat je het resultaat (oordeel, aanbeveling, scores) meteen
+    # kunt meenemen zonder naar de Download-tab te hoeven.
+    validation_report = _assemble_validation_report(
+        report, priv, sdm, recommendation, synth_name, len(df), n_generated, random_seed, seq
+    )
+    pdf_bytes = build_report_pdf(validation_report, verdict)
+    _render_pdf_download(pdf_bytes, key="pdf_banner")
+    st.caption("Rapport met oordeel, aanbeveling, scores en drempels — om te delen of archiveren.")
+
     tab_val, tab_dist, tab_dl = st.tabs(
         ["Validatierapport", "Distributies", "Download & Reproductie"]
     )
@@ -298,11 +352,8 @@ def render(
             recommendation=recommendation,
             metadata_dict=metadata_dict,
             real_metadata_dict=real_metadata_dict,
-            report=report,
-            priv=priv,
-            sdm=sdm,
-            seq=seq,
-            n_training_rows=len(df),
+            validation_report=validation_report,
+            pdf_bytes=pdf_bytes,
             synthesizer=synth_name,
         )
 
@@ -805,15 +856,11 @@ def _render_download(
     recommendation: str,
     metadata_dict: dict | None,
     real_metadata_dict: dict | None,
-    report: Report,
-    priv: PrivacyReport,
-    sdm: SDMetricsReport,
-    seq: SequentialReport | None,
-    n_training_rows: int,
+    validation_report: dict,
+    pdf_bytes: bytes,
     synthesizer: str = "gaussian",
 ) -> None:
     import json
-    from datetime import date
 
     import sdv as _sdv
 
@@ -829,20 +876,6 @@ def _render_download(
     if st.button("Download synthetische data", use_container_width=True, type="primary"):
         _download_dialog(csv_bytes, verdict, recommendation)
 
-    validation_report = build_validation_report(
-        report=report,
-        priv=priv,
-        sdm=sdm,
-        recommendation=recommendation,
-        synthesizer=synthesizer,
-        n_training_rows=n_training_rows,
-        n_generated_rows=n_generated,
-        sdv_version=sdv_version,
-        generated_at=date.today().isoformat(),
-        random_seed=random_seed,
-        intended_use=st.session_state.get("intended_use"),
-        seq=seq,
-    )
     st.download_button(
         "Download validation_report.json",
         json.dumps(validation_report, indent=2, ensure_ascii=False).encode("utf-8"),
@@ -852,13 +885,7 @@ def _render_download(
     )
     st.caption("Bevat alle scores en synthese-parameters. Bewaar het naast de CSV.")
 
-    st.download_button(
-        "Download rapport (PDF)",
-        build_report_pdf(validation_report, verdict),
-        file_name="validatierapport.pdf",
-        mime="application/pdf",
-        use_container_width=True,
-    )
+    _render_pdf_download(pdf_bytes, key="pdf_download_tab")
     st.caption("Leesbaar rapport met oordeel, scores en parameters — om te delen of archiveren.")
 
     meta_summary = _summarize_metadata(metadata_dict or real_metadata_dict)
