@@ -35,7 +35,17 @@ SDV biedt ook neurale synthesizers (CTGAN, TVAE). Gemeten tegen de benchmark-har
 
 - **Kleine datasets (< 500 rijen)** — correlatieramingen worden instabiel
 - **Sterke niet-lineaire verbanden** — Gaussian Copula mist complexe interacties
-- **Longitudinale data met studentpaden** — hiervoor schakelt de app over op SDV's `PARSynthesizer`. Geef je een upload met meerdere rijen per entiteit over de tijd, dan kies je een sequence key (ID per entiteit) en sequence index (tijdkolom); PAR behoudt de volgorde binnen elke entiteit.
+- **Longitudinale data met studentpaden** — voor data met meerdere rijen per entiteit over de tijd gebruikt de app een aparte sequentiële synthesizer (zie hieronder).
+
+## Longitudinale synthese
+
+Heeft een upload meerdere rijen per entiteit over de tijd (bv. één rij per student per studiejaar), dan kies je een **sequence key** (ID per entiteit) en een **sequence index** (tijdkolom). De app gebruikt dan een lichte, niet-neurale sequentiële synthesizer bovenop dezelfde Gaussian Copula:
+
+1. **Plat maken** — de data wordt naar wide-formaat gezet: één rij per entiteit, met per tijdstap een kolom (`status_j1`, `status_j2`, `ec_j1`, …). Zo worden de verbanden tussen tijdstappen (doorstroomkansen) gewone kolom-correlaties die de Gaussian Copula al modelleert.
+2. **Genereren** — de copula leert de gezamenlijke verdeling inclusief een expliciete reekslengte, en trekt nieuwe wide-rijen.
+3. **Terugzetten** — elke synthetische rij wordt teruggevouwen naar het originele long-formaat. Twee regels houden de reeksen geldig: een reeks stopt bij een **eindstaat** (een categorie die in de echte data nooit een opvolger heeft, bv. gediplomeerd/uitgestroomd — automatisch afgeleid), en de lengte van reeksen zónder eindstaat komt uit de meegemodelleerde reekslengte.
+
+Dit vervangt SDV's `PARSynthesizer` (deep learning). PAR traint op CPU minutenlang en scoort matig op kleine onderwijsdatasets; de doelgroep draait lokaal zonder GPU. De copula-aanpak fit én samplet in seconden op CPU, behoudt de doorstroomkansen en genereert zowel categorische staten als numerieke kolommen per tijdstap.
 
 ## Relatie tot SDV
 

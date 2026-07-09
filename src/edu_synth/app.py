@@ -15,38 +15,41 @@ from edu_synth.ui.theme import inject_css
 
 
 def _run_sequential(src: datasource.DataSource, cfg: cfg_ui.SequentialConfig) -> None:
-    from sdv.sequential import PARSynthesizer
+    from edu_synth.core.synthesize import (
+        build_sequential_metadata,
+        fit_sequential,
+        sample_sequential,
+    )
 
-    from edu_synth.core.synthesize import build_sequential_metadata
-
-    with st.spinner("PAR-model trainen (kan enkele minuten duren)…"):
+    with st.spinner("Longitudinaal model trainen…"):
         try:
             set_seed(cfg.seed)
             # Bouw de metadata voor demo én upload zelf op uit de gekozen
-            # key/index. SDV's demo-metadata zet niet altijd een sequence key
-            # (bv. SelfRegulationSCP1 → PAR faalt); zelf opbouwen garandeert een
-            # geldige sequentie-metadata met key én index.
+            # key/index. SDV's demo-metadata zet niet altijd een sequence key;
+            # zelf opbouwen garandeert geldige sdtypes voor het validatierapport
+            # (id-key + numerical/datetime-index).
             metadata = build_sequential_metadata(src.df, cfg.seq_key, cfg.seq_idx)
             seq_info = {
                 "key": cfg.seq_key,
                 "index": cfg.seq_idx,
                 "index_sdtype": metadata.tables["data"].columns[cfg.seq_idx]["sdtype"],
             }
-            # Vangnet: mocht de key toch ontbreken, geef een duidelijke melding
-            # met de gedetecteerde velden i.p.v. een rauwe SDV-crash.
+            # Vangnet: mocht de key ontbreken, geef een duidelijke melding met de
+            # gedetecteerde velden i.p.v. een rauwe crash verderop.
             table_meta = list(metadata.tables.values())[0]
             if not table_meta.sequence_key:
                 st.error(
                     "Deze longitudinale dataset heeft geen **sequence key**, dus er "
-                    "kan geen multi-sequence-model op getraind worden. "
+                    "kan geen sequentie-model op getraind worden. "
                     f"(gedetecteerd: key={table_meta.sequence_key!r}, "
                     f"index={table_meta.sequence_index!r})"
                 )
                 st.stop()
 
-            model = PARSynthesizer(metadata, epochs=128, verbose=False)
-            model.fit(src.df)
-            st.session_state["synth"] = model.sample(num_sequences=cfg.n_sequences)
+            # Lichte, niet-neurale sequentiële synthesizer (wide-reshape +
+            # GaussianCopula): fit én sample in seconden op CPU, zonder GPU/torch.
+            model = fit_sequential(src.df, cfg.seq_key, cfg.seq_idx, seed=cfg.seed)
+            st.session_state["synth"] = sample_sequential(model, cfg.n_sequences)
             st.session_state["n_label"] = f"{cfg.n_sequences} sequenties"
             st.session_state["n_generated"] = cfg.n_sequences
             st.session_state["col_types"] = None
