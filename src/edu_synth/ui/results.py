@@ -255,7 +255,9 @@ def render(
 
     if verdict["brk_risk"] in ("matig", "hoog"):
         _render_improvement_advice(
-            improvement_advice(report, df, priv, numerical_distributions, pairs)
+            improvement_advice(
+                report, df, priv, numerical_distributions, pairs, seq=seq, synthesizer=synth_name
+            )
         )
 
     tab_val, tab_dist, tab_dl = st.tabs(
