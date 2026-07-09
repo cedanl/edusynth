@@ -17,51 +17,78 @@ from edu_synth.ui.theme import inject_css
 def _run_sequential(src: datasource.DataSource, cfg: cfg_ui.SequentialConfig) -> None:
     from edu_synth.core.synthesize import (
         build_sequential_metadata,
+        fit_par,
         fit_sequential,
+        sample_par,
         sample_sequential,
     )
 
-    with st.spinner("Longitudinaal model trainen…"):
-        try:
-            set_seed(cfg.seed)
-            # Bouw de metadata voor demo én upload zelf op uit de gekozen
-            # key/index. SDV's demo-metadata zet niet altijd een sequence key;
-            # zelf opbouwen garandeert geldige sdtypes voor het validatierapport
-            # (id-key + numerical/datetime-index).
-            metadata = build_sequential_metadata(src.df, cfg.seq_key, cfg.seq_idx)
-            seq_info = {
-                "key": cfg.seq_key,
-                "index": cfg.seq_idx,
-                "index_sdtype": metadata.tables["data"].columns[cfg.seq_idx]["sdtype"],
-            }
-            # Vangnet: mocht de key ontbreken, geef een duidelijke melding met de
-            # gedetecteerde velden i.p.v. een rauwe crash verderop.
-            table_meta = list(metadata.tables.values())[0]
-            if not table_meta.sequence_key:
-                st.error(
-                    "Deze longitudinale dataset heeft geen **sequence key**, dus er "
-                    "kan geen sequentie-model op getraind worden. "
-                    f"(gedetecteerd: key={table_meta.sequence_key!r}, "
-                    f"index={table_meta.sequence_index!r})"
-                )
-                st.stop()
+    try:
+        set_seed(cfg.seed)
+        # Bouw de metadata voor demo én upload zelf op uit de gekozen
+        # key/index. SDV's demo-metadata zet niet altijd een sequence key;
+        # zelf opbouwen garandeert geldige sdtypes voor het validatierapport
+        # (id-key + numerical/datetime-index).
+        metadata = build_sequential_metadata(src.df, cfg.seq_key, cfg.seq_idx)
+        seq_info = {
+            "key": cfg.seq_key,
+            "index": cfg.seq_idx,
+            "index_sdtype": metadata.tables["data"].columns[cfg.seq_idx]["sdtype"],
+        }
+        # Vangnet: mocht de key ontbreken, geef een duidelijke melding met de
+        # gedetecteerde velden i.p.v. een rauwe crash verderop.
+        table_meta = list(metadata.tables.values())[0]
+        if not table_meta.sequence_key:
+            st.error(
+                "Deze longitudinale dataset heeft geen **sequence key**, dus er "
+                "kan geen sequentie-model op getraind worden. "
+                f"(gedetecteerd: key={table_meta.sequence_key!r}, "
+                f"index={table_meta.sequence_index!r})"
+            )
+            st.stop()
 
+        if cfg.synthesizer == "par":
+            # PAR (deep learning): trager op CPU, dus een echte voortgangsbalk in
+            # procenten (per epoch bijgewerkt) i.p.v. een spinner zonder einde.
+            progress_bar = st.progress(0.0, text="PAR-model trainen… 0%")
+
+            def _on_epoch(frac: float) -> None:
+                pct = min(int(frac * 100), 100)
+                progress_bar.progress(min(frac, 1.0), text=f"PAR-model trainen… {pct}%")
+
+            model = fit_par(
+                src.df,
+                cfg.seq_key,
+                cfg.seq_idx,
+                epochs=cfg.epochs,
+                seed=cfg.seed,
+                progress=_on_epoch,
+            )
+            progress_bar.progress(1.0, text="Reeksen genereren…")
+            st.session_state["synth"] = sample_par(model, cfg.n_sequences)
+            progress_bar.empty()
+            synth_name = "par"
+        else:
             # Lichte, niet-neurale sequentiële synthesizer (wide-reshape +
             # GaussianCopula): fit én sample in seconden op CPU, zonder GPU/torch.
-            model = fit_sequential(src.df, cfg.seq_key, cfg.seq_idx, seed=cfg.seed)
-            st.session_state["synth"] = sample_sequential(model, cfg.n_sequences)
-            st.session_state["n_label"] = f"{cfg.n_sequences} sequenties"
-            st.session_state["n_generated"] = cfg.n_sequences
-            st.session_state["col_types"] = None
-            st.session_state["numerical_distributions"] = {}
-            st.session_state["primary_key"] = None
-            st.session_state["random_seed"] = cfg.seed
-            st.session_state["modality"] = "sequential"
-            st.session_state["seq_info"] = seq_info
-            st.session_state["metadata_dict"] = metadata.to_dict()
-        except Exception as exc:
-            st.error(f"Fout bij genereren: {exc}")
-            st.stop()
+            with st.spinner("Longitudinaal model trainen…"):
+                model = fit_sequential(src.df, cfg.seq_key, cfg.seq_idx, seed=cfg.seed)
+                st.session_state["synth"] = sample_sequential(model, cfg.n_sequences)
+            synth_name = "sequential_copula"
+
+        st.session_state["n_label"] = f"{cfg.n_sequences} sequenties"
+        st.session_state["n_generated"] = cfg.n_sequences
+        st.session_state["col_types"] = None
+        st.session_state["numerical_distributions"] = {}
+        st.session_state["primary_key"] = None
+        st.session_state["random_seed"] = cfg.seed
+        st.session_state["modality"] = "sequential"
+        st.session_state["seq_info"] = seq_info
+        st.session_state["metadata_dict"] = metadata.to_dict()
+        st.session_state["synthesizer"] = synth_name
+    except Exception as exc:
+        st.error(f"Fout bij genereren: {exc}")
+        st.stop()
 
 
 def _run_tabular(
@@ -102,6 +129,7 @@ def _run_tabular(
             st.session_state["modality"] = "single_table"
             st.session_state["seq_info"] = None
             st.session_state["metadata_dict"] = meta.to_dict()
+            st.session_state["synthesizer"] = "gaussian"
         except Exception as exc:
             st.error(f"Fout bij genereren: {exc}")
             st.stop()
@@ -192,7 +220,7 @@ src = st.session_state["src"]
 # type-suggesties (<90%) komen vanzelf bovenaan te staan (render_column_hints).
 if step == 2:
     st.markdown("#### ② Genereren")
-    # Een eigen upload kan longitudinaal zijn → PAR. Demo-data heeft een vaste
+    # Een eigen upload kan longitudinaal zijn. Demo-data heeft een vaste
     # modaliteit. De longitudinale keuze bepaalt de flow, dus die staat vooraan.
     upload_seq_cfg = cfg_ui.render_upload_sequential(src.df) if src.modality is None else None
     is_sequential = src.modality == "sequential" or upload_seq_cfg is not None
@@ -240,6 +268,7 @@ results.render(
     seq_info=st.session_state.get("seq_info"),
     metadata_dict=st.session_state.get("metadata_dict"),
     real_metadata_dict=st.session_state.get("real_metadata_dict"),
+    synthesizer=st.session_state.get("synthesizer"),
 )
 
 st.divider()

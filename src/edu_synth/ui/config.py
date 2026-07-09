@@ -27,6 +27,9 @@ class SequentialConfig:
     seq_key: str | None = field(default=None)
     seq_idx: str | None = field(default=None)
     seed: int = 42
+    # "copula" = lichte, snelle synthesizer (aanbevolen); "par" = SDV's neurale PAR.
+    synthesizer: str = "copula"
+    epochs: int = 128  # alleen relevant voor PAR
 
 
 def _render_seed() -> int:
@@ -44,6 +47,40 @@ def _render_seed() -> int:
             )
         )
     return seed
+
+
+def _render_sequential_synthesizer() -> tuple[str, int]:
+    """Niveau 2: keuze tussen de lichte copula (default) en PAR (deep learning).
+
+    Retourneert ``(synthesizer, epochs)``. ``epochs`` is alleen relevant voor PAR.
+    """
+    with st.expander("Synthesizer kiezen (geavanceerd)", expanded=False):
+        choice = st.radio(
+            "Model voor longitudinale data",
+            options=["copula", "par"],
+            format_func=lambda v: {
+                "copula": "Licht (copula) — snel, aanbevolen",
+                "par": "PAR (deep learning) — langzamer, complexere patronen",
+            }[v],
+            key="seq_synthesizer",
+            help="De lichte copula fit en samplet in seconden op CPU. PAR is een "
+            "neuraal netwerk (LSTM): structureel trager, maar kan soms complexere "
+            "temporele patronen leren. Kies PAR alleen als de copula tekortschiet.",
+        )
+        epochs = 128
+        if choice == "par":
+            epochs = int(
+                st.slider(
+                    "PAR-epochs",
+                    min_value=10,
+                    max_value=256,
+                    value=128,
+                    step=1,
+                    help="Meer epochs = langer trainen, mogelijk betere kwaliteit. "
+                    "Op CPU kan de training minuten duren; de voortgang is zichtbaar.",
+                )
+            )
+    return choice, epochs
 
 
 def render_tabular(
@@ -189,8 +226,8 @@ def render_upload_sequential(df: pd.DataFrame) -> SequentialConfig | None:
 
     with st.expander("Longitudinale configuratie", expanded=True):
         st.caption(
-            "Voor longitudinale data gebruikt de app de PAR-synthesizer, die de "
-            "volgorde per entiteit behoudt. Training kan enkele minuten duren."
+            "Voor longitudinale data behoudt de app de volgorde per entiteit. "
+            "Standaard draait een lichte, snelle synthesizer; PAR is optioneel."
         )
         seq_key, seq_idx = _render_seq_column_selectors(df, default_key, default_index)
 
@@ -202,8 +239,16 @@ def render_upload_sequential(df: pd.DataFrame) -> SequentialConfig | None:
             value=min(100, df[seq_key].nunique()),
         )
     )
+    synthesizer, epochs = _render_sequential_synthesizer()
     seed = _render_seed()
-    return SequentialConfig(n_sequences=n_sequences, seq_key=seq_key, seq_idx=seq_idx, seed=seed)
+    return SequentialConfig(
+        n_sequences=n_sequences,
+        seq_key=seq_key,
+        seq_idx=seq_idx,
+        seed=seed,
+        synthesizer=synthesizer,
+        epochs=epochs,
+    )
 
 
 _INEQ_OPERATORS = ["≤", "<", "≥", ">"]
@@ -304,5 +349,13 @@ def render_sequential(df: pd.DataFrame, demo_meta: object) -> SequentialConfig:
             value=min(10, df[seq_key].nunique()),
         )
     )
+    synthesizer, epochs = _render_sequential_synthesizer()
     seed = _render_seed()
-    return SequentialConfig(n_sequences=n_sequences, seq_key=seq_key, seq_idx=seq_idx, seed=seed)
+    return SequentialConfig(
+        n_sequences=n_sequences,
+        seq_key=seq_key,
+        seq_idx=seq_idx,
+        seed=seed,
+        synthesizer=synthesizer,
+        epochs=epochs,
+    )
