@@ -439,3 +439,197 @@ def build_sequential_metadata(df: pd.DataFrame, seq_key: str, seq_index: str) ->
     metadata.set_sequence_key(seq_key, table_name="data")
     metadata.set_sequence_index(seq_index, table_name="data")
     return metadata
+
+
+# ── Lichte sequentiële synthesizer (wide + GaussianCopula) ──────────────────────
+#
+# PAR (deep learning) is op CPU minutenlang en matig op kleine onderwijsdatasets.
+# In plaats daarvan zetten we de longitudinale data plat (één rij per entiteit,
+# kolommen ``feature__tN`` per tijdstap) en laten we de bestaande GaussianCopula die
+# leren — inclusief de cross-tijd-correlaties (dus doorstroomkansen) en een expliciete
+# reekslengte. Bij sampling reconstrueren we het originele long-format terug.
+#
+# Twee reconstructie-regels houden de reeksen geldig:
+#   1. De reekslengte komt uit een meegemodelleerde ``__seq_len__``-kolom, niet uit
+#      het (ruizige) NaN-patroon — zo blijft de lengteverdeling kloppen.
+#   2. Een reeks stopt bij een *terminale* staat (een categorie die in de echte data
+#      nooit een opvolger heeft, bv. gediplomeerd/uitgestroomd) — zo ontstaan geen
+#      onmogelijke paden (actieve staat ná een eindstaat).
+
+_SEQ_LEN_COL = "__seq_len__"
+
+
+@dataclass
+class SequentialCopulaModel:
+    """Gefitte lichte sequentiële synthesizer. Geef door aan :func:`sample_sequential`."""
+
+    copula: GaussianCopulaSynthesizer
+    seq_key: str
+    seq_index: str
+    original_columns: list[str]
+    feature_cols: list[str]
+    feature_dtypes: dict[str, Any]
+    index_levels: list  # geordende originele tijd-waarden; positie t → index_levels[t-1]
+    index_dtype: Any
+    terminal: dict[str, set]  # per categorische kolom: waarden die een reeks beëindigen
+    fallback: dict[str, Any]  # per kolom: waarde als forward-fill niets heeft (mode/mediaan)
+    max_len: int
+
+
+def _learn_terminal_states(
+    df: pd.DataFrame, seq_key: str, seq_index: str, cat_cols: list[str]
+) -> dict[str, set]:
+    """Leer per categorische kolom welke waarden *terminaal* zijn.
+
+    Een waarde is terminaal als ze in de echte data nooit een opvolgende rij binnen
+    dezelfde entiteit heeft — precies het gedrag van een absorberende staat
+    (gediplomeerd, uitgestroomd). Zo hoeven we die staten niet hard te coderen.
+    """
+    ordered = df.sort_values([seq_key, seq_index])
+    terminal: dict[str, set] = {}
+    for col in cat_cols:
+        seen: set = set()
+        with_successor: set = set()
+        for _, g in ordered.groupby(seq_key, sort=False):
+            vals = g[col].tolist()
+            for v in vals:
+                if pd.notna(v):
+                    seen.add(v)
+            for v in vals[:-1]:  # alles behalve de laatste rij heeft een opvolger
+                if pd.notna(v):
+                    with_successor.add(v)
+        terminal[col] = seen - with_successor
+    return terminal
+
+
+def _to_wide(
+    df: pd.DataFrame,
+    seq_key: str,
+    seq_index: str,
+    feature_cols: list[str],
+    pos: dict,
+    max_len: int,
+) -> pd.DataFrame:
+    """long → wide: één rij per entiteit, kolommen ``feature__tN`` + ``__seq_len__``."""
+    records = []
+    for _, g in df.groupby(seq_key, sort=False):
+        g = g.sort_values(seq_index)
+        row: dict = {}
+        for _, r in g.iterrows():
+            t = pos[r[seq_index]]
+            for feat in feature_cols:
+                row[f"{feat}__t{t}"] = r[feat]
+        row[_SEQ_LEN_COL] = len(g)
+        records.append(row)
+
+    columns = [f"{feat}__t{t}" for t in range(1, max_len + 1) for feat in feature_cols]
+    wide = pd.DataFrame(records).reindex(columns=[*columns, _SEQ_LEN_COL])
+    # Numerieke features: forceer numeriek zodat SDV ze als 'numerical' detecteert
+    # (de pivot met gemengde NaN maakt er anders object van).
+    for feat in feature_cols:
+        if pd.api.types.is_numeric_dtype(df[feat]):
+            for t in range(1, max_len + 1):
+                wide[f"{feat}__t{t}"] = pd.to_numeric(wide[f"{feat}__t{t}"], errors="coerce")
+    return wide
+
+
+def fit_sequential(
+    df: pd.DataFrame, seq_key: str, seq_index: str, seed: int | None = None
+) -> SequentialCopulaModel:
+    """Train de lichte sequentiële synthesizer op longitudinale *df* (long-format).
+
+    *seq_key* is de entiteit (bv. studentnummer), *seq_index* de tijd-as (bv.
+    studiejaar). Fit en sampling draaien in seconden op CPU — geschikt voor lokale
+    onderwijs-apparatuur zonder GPU.
+    """
+    feature_cols = [c for c in df.columns if c not in (seq_key, seq_index)]
+    index_levels = sorted(df[seq_index].dropna().unique().tolist())
+    pos = {lvl: i + 1 for i, lvl in enumerate(index_levels)}
+    max_len = len(index_levels)
+
+    cat_cols = [c for c in feature_cols if not pd.api.types.is_numeric_dtype(df[c])]
+    terminal = _learn_terminal_states(df, seq_key, seq_index, cat_cols)
+
+    fallback: dict[str, Any] = {}
+    for feat in feature_cols:
+        col = df[feat].dropna()
+        if col.empty:
+            fallback[feat] = None
+        elif pd.api.types.is_numeric_dtype(df[feat]):
+            fallback[feat] = col.median()
+        else:
+            fallback[feat] = col.mode().iloc[0]
+
+    wide = _to_wide(df, seq_key, seq_index, feature_cols, pos, max_len)
+    copula = fit(wide, seed=seed)
+
+    return SequentialCopulaModel(
+        copula=copula,
+        seq_key=seq_key,
+        seq_index=seq_index,
+        original_columns=list(df.columns),
+        feature_cols=feature_cols,
+        feature_dtypes={c: df[c].dtype for c in feature_cols},
+        index_levels=index_levels,
+        index_dtype=df[seq_index].dtype,
+        terminal=terminal,
+        fallback=fallback,
+        max_len=max_len,
+    )
+
+
+def _is_missing(val: Any) -> bool:
+    return val is None or (isinstance(val, float) and pd.isna(val))
+
+
+def _first_terminal_pos(row: pd.Series, model: SequentialCopulaModel) -> int | None:
+    """Eerste tijdstap (1-based) waarop een gesampelde staat terminaal is, of ``None``."""
+    for t in range(1, model.max_len + 1):
+        for feat, terms in model.terminal.items():
+            if not terms:
+                continue
+            val = row.get(f"{feat}__t{t}")
+            if not _is_missing(val) and val in terms:
+                return t
+    return None
+
+
+def sample_sequential(model: SequentialCopulaModel, n_sequences: int) -> pd.DataFrame:
+    """Genereer *n_sequences* synthetische reeksen, terug in het originele long-format."""
+    synth_wide = sample(model.copula, n_sequences)
+    rows: list[dict] = []
+
+    for new_id, (_, r) in enumerate(synth_wide.iterrows(), start=1):
+        # Bepaal de reekslengte. Een eindstaat (gediplomeerd/uitgestroomd) is leidend:
+        # de reeks stopt daar. Komt er geen eindstaat voor, dan is de reeks gecensureerd
+        # (bv. nog ingeschreven) en gebruiken we de meegemodelleerde ``__seq_len__``.
+        terminal_pos = _first_terminal_pos(r, model)
+        if terminal_pos is not None:
+            k = terminal_pos
+        else:
+            raw_len = r.get(_SEQ_LEN_COL)
+            k = model.max_len if _is_missing(raw_len) else int(round(float(raw_len)))
+        k = max(1, min(k, model.max_len))
+
+        last: dict[str, Any] = {feat: None for feat in model.feature_cols}
+        for t in range(1, k + 1):
+            record = {model.seq_key: new_id, model.seq_index: model.index_levels[t - 1]}
+            for feat in model.feature_cols:
+                val = r.get(f"{feat}__t{t}")
+                if _is_missing(val):  # gat → draag laatst bekende (of fallback) door
+                    val = last[feat] if not _is_missing(last[feat]) else model.fallback[feat]
+                last[feat] = val
+                record[feat] = val
+            rows.append(record)
+
+    out = pd.DataFrame(rows)
+    for feat, dtype in model.feature_dtypes.items():
+        try:
+            out[feat] = out[feat].astype(dtype)
+        except (ValueError, TypeError):
+            pass
+    try:
+        out[model.seq_index] = out[model.seq_index].astype(model.index_dtype)
+    except (ValueError, TypeError):
+        pass
+    return out.reindex(columns=model.original_columns)

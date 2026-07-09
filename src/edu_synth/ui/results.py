@@ -641,7 +641,7 @@ def _render_download(
         priv=priv,
         sdm=sdm,
         recommendation=recommendation,
-        synthesizer="par" if modality == "sequential" else "gaussian",
+        synthesizer="sequential_copula" if modality == "sequential" else "gaussian",
         n_training_rows=n_training_rows,
         n_generated_rows=n_generated,
         sdv_version=sdv_version,
@@ -768,36 +768,26 @@ def _build_code(
     seed_import = "import numpy as np\n" if random_seed is not None else ""
     seed_line = f"\nnp.random.seed({random_seed})" if random_seed is not None else ""
     if modality == "sequential":
-        if seq_info:  # eigen longitudinale upload — metadata zelf opbouwen
-            key, idx, idx_sdtype = seq_info["key"], seq_info["index"], seq_info["index_sdtype"]
-            return f"""\
-{version_comment}{seed_import}import pandas as pd
-from sdv.metadata import Metadata
-from sdv.sequential import PARSynthesizer
-
-real = pd.read_csv("jouw_data.csv")
-
-metadata = Metadata.detect_from_dataframe(real, table_name="data")
-metadata.update_column("{key}", sdtype="id", table_name="data")
-metadata.update_column("{idx}", sdtype="{idx_sdtype}", table_name="data")
-metadata.set_sequence_key("{key}", table_name="data")
-metadata.set_sequence_index("{idx}", table_name="data")
-{seed_line}
-synthesizer = PARSynthesizer(metadata, epochs=128)
-synthesizer.fit(real)
-synth = synthesizer.sample(num_sequences={n_generated})
-synth.to_csv("synthetisch.csv", index=False)
-"""
+        # Lichte, niet-neurale sequentiële synthesizer van edu-synth (wide-reshape +
+        # GaussianCopula). Voor een eigen upload kies je zelf sequence key/index; bij
+        # demo-data komen die uit de gedetecteerde kolommen.
+        key = seq_info["key"] if seq_info else "student_id"
+        idx = seq_info["index"] if seq_info else "jaar"
+        load = (
+            'real = pd.read_csv("jouw_data.csv")'
+            if seq_info
+            else "from sdv.datasets.demo import download_demo\n\n"
+            f'real, _ = download_demo(modality="sequential", dataset_name="{demo_name}")'
+        )
+        seed_arg = f", seed={random_seed}" if random_seed is not None else ""
         return f"""\
-{version_comment}{seed_import}import pandas as pd
-from sdv.datasets.demo import download_demo
-from sdv.sequential import PARSynthesizer
+{version_comment}import pandas as pd
+from edu_synth.core.synthesize import fit_sequential, sample_sequential
 
-real, metadata = download_demo(modality="sequential", dataset_name="{demo_name}")
-{seed_line}
-synthesizer = PARSynthesizer(metadata, epochs=128)
-synthesizer.fit(real)
-synth = synthesizer.sample(num_sequences={n_generated})
+{load}
+
+model = fit_sequential(real, seq_key="{key}", seq_index="{idx}"{seed_arg})
+synth = sample_sequential(model, n_sequences={n_generated})
 synth.to_csv("synthetisch.csv", index=False)
 """
     col_defs = "\n".join(

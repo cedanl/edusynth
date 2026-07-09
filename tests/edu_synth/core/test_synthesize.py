@@ -18,11 +18,13 @@ from edu_synth.core.synthesize import (
     build_sequential_metadata,
     detect_datetime_format,
     fit,
+    fit_sequential,
     infer_column_hints,
     infer_sequence_columns,
     is_skewed,
     recommend_numerical_distributions,
     sample,
+    sample_sequential,
 )
 
 FIXTURES = Path(__file__).parent.parent.parent / "fixtures"
@@ -260,6 +262,56 @@ def test_build_sequential_metadata_feeds_par():
     model.fit(df)
     out = model.sample(num_sequences=3)
     assert set(out.columns) == set(df.columns)
+
+
+def _doorstroom_df(n_students: int = 60, seed: int = 0) -> pd.DataFrame:
+    """Longitudinale doorstroom-fixture met absorberende eindstaten (diploma/uitval)."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for sid in range(n_students):
+        state, ec = "ingeschreven", 0.0
+        for jaar in range(1, 6):
+            ec += float(rng.integers(30, 60))
+            rows.append({"student_id": sid, "jaar": jaar, "status": state, "ec": ec})
+            if state in ("gediplomeerd", "uitgestroomd"):
+                break
+            state = rng.choice(
+                ["ingeschreven", "gediplomeerd", "uitgestroomd"], p=[0.7, 0.15, 0.15]
+            )
+    return pd.DataFrame(rows)
+
+
+def test_sample_sequential_restores_original_format():
+    df = _doorstroom_df()
+    model = fit_sequential(df, "student_id", "jaar", seed=42)
+    out = sample_sequential(model, n_sequences=25)
+    # Zelfde kolommen in dezelfde volgorde als de echte data.
+    assert list(out.columns) == list(df.columns)
+    assert out["student_id"].nunique() == 25
+    # Numerieke kolom blijft numeriek, categorische kolom blijft categorisch.
+    assert pd.api.types.is_numeric_dtype(out["ec"])
+    assert set(out["status"].dropna()).issubset(set(df["status"]))
+
+
+def test_sample_sequential_no_state_after_absorbing():
+    """Geen actieve staat ná een eindstaat, en geen gaten in de tijd-as."""
+    df = _doorstroom_df()
+    model = fit_sequential(df, "student_id", "jaar", seed=1)
+    out = sample_sequential(model, n_sequences=40)
+    absorbing = {"gediplomeerd", "uitgestroomd"}
+    for _, g in out.sort_values(["student_id", "jaar"]).groupby("student_id"):
+        jaren = g["jaar"].tolist()
+        assert jaren == list(range(jaren[0], jaren[0] + len(jaren)))  # aaneengesloten
+        states = g["status"].tolist()
+        for i, s in enumerate(states):
+            if s in absorbing:
+                assert i == len(states) - 1  # eindstaat is de laatste rij
+
+
+def test_fit_sequential_learns_terminal_states():
+    df = _doorstroom_df()
+    model = fit_sequential(df, "student_id", "jaar", seed=0)
+    assert model.terminal["status"] == {"gediplomeerd", "uitgestroomd"}
 
 
 # ── Cross-column constraints ─────────────────────────────────────────────────────
