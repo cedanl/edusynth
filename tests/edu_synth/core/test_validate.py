@@ -25,6 +25,7 @@ from edu_synth.core.validate import (
     sequential_recommendation,
     sequential_verdict,
     usage_recommendation,
+    worst_sequential_component,
 )
 
 
@@ -908,6 +909,40 @@ def test_sequential_recommendation_unavailable_flags_not_assessed():
     df = _longitudinal({"a": ["jaar1", "diploma"]})
     text = sequential_recommendation(evaluate_sequential(df, df.copy(), "ontbrekend", "jaar"))
     assert "niet beoordeeld" in text.lower()
+
+
+def test_worst_sequential_component_none_when_all_within_threshold():
+    report = SequentialReport(
+        available=True,
+        length_distance=0.0,
+        length_ok=True,
+        rows=[{"column": "status", "kind": "transition", "score": 0.05, "ok": True}],
+    )
+    assert worst_sequential_component(report) is None
+
+
+def test_worst_sequential_component_picks_highest_failing():
+    report = SequentialReport(
+        available=True,
+        length_distance=0.0,
+        length_ok=True,
+        rows=[
+            {"column": "status", "kind": "transition", "score": 0.34, "ok": False},
+            {"column": "ec", "kind": "autocorrelation", "score": 0.25, "ok": False},
+        ],
+    )
+    worst = worst_sequential_component(report)
+    assert worst["column"] == "status"
+    assert worst["kind"] == "transition"
+    assert worst["score"] == 0.34
+    assert worst["threshold"] == 0.2
+
+
+def test_worst_sequential_component_includes_length():
+    report = SequentialReport(available=True, length_distance=0.5, length_ok=False, rows=[])
+    worst = worst_sequential_component(report)
+    assert worst["kind"] == "length"
+    assert worst["column"] is None
 
 
 def test_build_validation_report_includes_temporal_section():

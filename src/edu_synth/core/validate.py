@@ -724,6 +724,33 @@ def sequential_verdict(seq: SequentialReport) -> tuple[str, str]:
     return score_verdict(max_score, n_failed, len(seq.rows) + 1)  # +1 voor de lengte-verdeling
 
 
+def worst_sequential_component(seq: SequentialReport) -> dict | None:
+    """Geef de submetriek die het tijdsgedrag-oordeel het sterkst omlaag trekt.
+
+    Het samengestelde oordeel is de worst-case over alle componenten (per-kolom
+    overgangsmatrix/autocorrelatie + de sequentielengte). Deze helper geeft de
+    scherpst afwijkende component die *boven de grens* (`_SCORE_OK`) ligt, zodat de
+    UI kan tonen wélke kolom + metriek een "Let op"/"Matig" drijft. ``None`` als
+    alles binnen de grens blijft of er niets te meten viel.
+
+    Retour: ``{"kind", "column", "score", "threshold"}`` — ``column`` is ``None`` voor
+    de sequentielengte.
+    """
+    if not seq.available:
+        return None
+    failing = [
+        {"kind": r["kind"], "column": r["column"], "score": r["score"]}
+        for r in seq.rows
+        if not r.get("ok", True)
+    ]
+    if not seq.length_ok:
+        failing.append({"kind": "length", "column": None, "score": seq.length_distance})
+    if not failing:
+        return None
+    worst = max(failing, key=lambda c: c["score"])
+    return {**worst, "threshold": _SCORE_OK}
+
+
 def sequential_recommendation(seq: SequentialReport) -> str:
     """Vertaal het temporele oordeel naar één gewone-taal-uitleg voor de app."""
     if not seq.available:
