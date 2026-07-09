@@ -135,6 +135,8 @@ De **DCR-ratio** vat dit samen:
 | `0.7 – 0.9` | Matig — beoordeel quasi-identifiers vóór publicatie |
 | `< 0.7` | Hoog — synthetisch zit te dicht op de trainingsdata |
 
+De **NNDR** (Nearest Neighbor Distance Ratio) staat ernaast als aanvullend signaal: de afstand van een synthetische rij tot de dichtstbijzijnde échte rij, gedeeld door de afstand tot de op-één-na dichtstbijzijnde. Hoger is beter; een lage waarde betekent dat een synthetische rij vlak op één echte rij zit terwijl de rest verder weg is. Het risico-oordeel leunt op de DCR-ratio; NNDR dient ter controle.
+
 ### Welke kolommen tellen mee?
 
 Zowel numerieke als categorische kolommen worden meegenomen. In onderwijsdata zijn de quasi-identifiers (`geslacht`, `instellingscode`, `opleidingscode`, `woonplaats`) juist categorisch — die mogen niet ontbreken in de berekening. Numerieke kolommen worden geschaald, categorische worden one-hot gecodeerd.

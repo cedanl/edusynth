@@ -26,6 +26,7 @@ from edu_synth.core.validate import (
     sequential_recommendation,
     sequential_verdict,
     usage_recommendation,
+    worst_sequential_component,
 )
 from edu_synth.ui.theme import NPULS, apply_plotly_style
 
@@ -347,9 +348,10 @@ def _render_validation(
         ]
         st.dataframe(rdf[order], use_container_width=True)
         st.caption(
-            "Score < 0.1 = uitstekend · < 0.2 = goed · > 0.2 = let op. "
-            "Categorisch = TV-afstand; numeriek = Wasserstein genormaliseerd op de "
-            "IQR van de echte kolom, zodat alle kolommen vergelijkbaar zijn. "
+            "**TV-afstand** (categorisch) = hoeveel de categoriefrequenties verschillen; "
+            "**Wasserstein** (numeriek) = hoeveel de numerieke verdelingen verschillen, "
+            "genormaliseerd op de IQR van de echte kolom zodat alle kolommen vergelijkbaar zijn. "
+            "Beide: lager = beter. Score < 0.1 = uitstekend · < 0.2 = goed · > 0.2 = let op. "
             "**Deze metrieken meten statistische gelijkenis, niet privacy.**"
         )
 
@@ -357,11 +359,35 @@ def _render_validation(
         if not priv.available:
             st.info(f"Privacyanalyse niet beschikbaar: {priv.reason}")
         else:
+            _DCR_HELP = (
+                "Distance to Closest Record: hoe ver een synthetische rij van de "
+                "dichtstbijzijnde échte rij ligt. Hoger = verder weg = veiliger."
+            )
             p1, p2, p3 = st.columns(3)
-            p1.metric("DCR synth (mediaan)", f"{priv.dcr_synth_median:.4f}")
-            p2.metric("DCR holdout (mediaan)", f"{priv.dcr_holdout_median:.4f}")
-            p3.metric("DCR-ratio", f"{priv.dcr_ratio:.2f}")
-            st.metric("NNDR mediaan", f"{priv.nndr_median:.2f}")
+            p1.metric(
+                "DCR synth (mediaan)",
+                f"{priv.dcr_synth_median:.4f}",
+                help=f"{_DCR_HELP} Dit is de mediaan over de synthetische rijen.",
+            )
+            p2.metric(
+                "DCR holdout (mediaan)",
+                f"{priv.dcr_holdout_median:.4f}",
+                help=f"{_DCR_HELP} Referentie: een echte holdout-set die het model nooit zag.",
+            )
+            p3.metric(
+                "DCR-ratio",
+                f"{priv.dcr_ratio:.2f}",
+                help="DCR synth ÷ DCR holdout. ~1 = synthetische data ligt even ver als "
+                "een echte holdout (veilig); hoger = beter. Grens: > 0.9 laag · 0.7–0.9 "
+                "matig · < 0.7 hoog risico.",
+            )
+            st.metric(
+                "NNDR mediaan",
+                f"{priv.nndr_median:.2f}",
+                help="Nearest Neighbor Distance Ratio: afstand tot de dichtstbijzijnde "
+                "échte rij ÷ tot de op-één-na dichtstbijzijnde. Hoger = beter; lage waarden "
+                "betekenen dat een synthetische rij vlak op één echte rij zit.",
+            )
             _PRIV_TEXT = {
                 "laag": (
                     "Synthetische rijen gedragen zich als onbekende data — "
@@ -422,6 +448,10 @@ def _render_correlations(pairs: PairsReport) -> None:
             "analyses die op samenhang tussen kolommen leunen."
         )
         st.dataframe(pd.DataFrame(pairs.flagged), use_container_width=True)
+    st.caption(
+        "Delta = het verschil in correlatie tussen twee kolommen, echt vs. synthetisch. "
+        "Lager = beter; ≤ 0.1 = goed bewaard. Een tekenomslag (+ wordt −) weegt het zwaarst."
+    )
 
 
 _SEQ_KIND_NL = {"transition": "overgangsmatrix", "autocorrelation": "autocorrelatie"}
@@ -439,7 +469,28 @@ def _render_sequential_detail(seq: SequentialReport) -> None:
         return
 
     icon = "✅" if seq.length_ok else "⚠️"
-    st.metric("Sequentielengte-afstand", f"{icon} {seq.length_distance:.3f}")
+    st.metric(
+        "Sequentielengte-afstand",
+        f"{icon} {seq.length_distance:.3f}",
+        help="Hoeveel de lengtes van de trajecten (aantal tijdstappen per entiteit) "
+        "afwijken van de echte data. Lager = beter; grens 0.2.",
+    )
+
+    # Bij een afwijking: benoem expliciet wélke kolom + metriek het oordeel drijft.
+    # De bovenste scorekaart aggregeert alle componenten; zonder deze regel lijkt een
+    # groene lengte-score tegenstrijdig met een rood totaaloordeel.
+    driver = worst_sequential_component(seq)
+    if driver is not None:
+        kind_nl = {
+            "transition": "overgangsmatrix",
+            "autocorrelation": "autocorrelatie",
+            "length": "sequentielengte",
+        }.get(driver["kind"], driver["kind"])
+        where = f"kolom `{driver['column']}`" if driver["column"] else "de trajectlengtes"
+        st.warning(
+            f"⚠️ Grootste afwijking: {where} ({kind_nl}) — score {driver['score']:.2f}, "
+            f"boven de grens {driver['threshold']:.1f}. Dit drijft het tijdsgedrag-oordeel."
+        )
 
     if seq.rows:
         rdf = pd.DataFrame(seq.rows)[["column", "kind", "score", "ok"]].copy()
@@ -456,10 +507,10 @@ def _render_sequential_detail(seq: SequentialReport) -> None:
         st.dataframe(rdf, use_container_width=True)
 
     st.caption(
-        "Categorisch = afstand tussen de overgangsmatrices (doorstroomkansen tussen "
-        "statussen). Numeriek = verschil in lag-1 autocorrelatie (trend binnen een "
-        "traject). Score < 0.2 = goed. De sequentielengte-afstand vergelijkt hoe lang "
-        "de trajecten zijn (echt vs. synthetisch)."
+        "**Overgangsmatrix** (categorisch) = hoeveel de doorstroomkansen tussen statussen "
+        "afwijken (0 = identiek, 1 = compleet anders). **Autocorrelatie** (numeriek) = hoeveel "
+        "de samenhang tussen opeenvolgende tijdstappen (trend) afwijkt. **Sequentielengte** = "
+        "hoeveel de trajectlengtes afwijken. Alle drie: lager = beter, grens 0.2."
     )
 
 
@@ -471,9 +522,15 @@ def _render_sdmetrics(sdm: SDMetricsReport) -> None:
             return
 
         if sdm.overall_score is not None:
-            st.metric("Overall quality score", f"{sdm.overall_score:.1%}")
+            st.metric(
+                "Overall quality score",
+                f"{sdm.overall_score:.1%}",
+                help="Similarity-score: hoger = beter, 100% = perfect. Let op: tegengesteld "
+                "aan de afstands-metrieken elders (TV, Wasserstein, DCR), waar lager beter is.",
+            )
         st.caption(
-            "Aanvullende kwaliteitsmetrieken uit sdmetrics. "
+            "Aanvullende kwaliteitsmetrieken uit sdmetrics — dit zijn *similarity*-scores "
+            "(hoger = beter, 100% = perfect), tegengesteld aan de afstanden hierboven. "
             "**Column Shapes** meet de verdeling per kolom (TVComplement / KSComplement); "
             "**Column Pair Trends** meet samenhang tussen kolomparen, inclusief "
             "categorisch × categorisch (ContingencySimilarity)."
