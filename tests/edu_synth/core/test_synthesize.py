@@ -32,6 +32,7 @@ from edu_synth.core.synthesize import (
 FIXTURES = Path(__file__).parent.parent.parent / "fixtures"
 FIXTURE_SCHEMA = FIXTURES / "mini_schema.yaml"
 FIXTURE_CSV = FIXTURES / "mini_inschrijving.csv"
+FIXTURE_DOORSTROOM = FIXTURES / "mini_doorstroom.csv"
 
 
 def test_load_schema_returns_dict():
@@ -217,6 +218,17 @@ def test_column_hint_has_suggestion_property():
 
 
 # ── Sequentieel / longitudinaal ──────────────────────────────────────────────────
+
+
+def test_smoke_sequential_fit_sample_from_fixture():
+    """Rookproef die het longitudinale pad in CI bewaakt: fit + sample op een vaste
+    mini-fixture (categorische staten + numerieke kolom) crasht niet en levert de
+    gevraagde vorm — dezelfde kolommen en het gevraagde aantal sequenties."""
+    df = pd.read_csv(FIXTURE_DOORSTROOM)
+    model = fit_sequential(df, "student_id", "jaar", seed=42)
+    out = sample_sequential(model, n_sequences=10)
+    assert list(out.columns) == list(df.columns)
+    assert out["student_id"].nunique() == 10
 
 
 def _longitudinal_df(n_students: int = 20, years: int = 4) -> pd.DataFrame:
