@@ -5,7 +5,7 @@ Usage:
     uv run python scripts/record-demo.py
 
 Prerequisites (one-time):
-    uv sync --all-extras
+    uv sync --group demo
     uv run playwright install chromium
 """
 
@@ -125,7 +125,7 @@ def _get_ffmpeg() -> str:
     ff = shutil.which("ffmpeg")
     if ff:
         return ff
-    sys.exit("ffmpeg not found — install imageio-ffmpeg:  uv sync --all-extras")
+    sys.exit("ffmpeg not found — install imageio-ffmpeg:  uv sync --group demo")
 
 
 # ── main ───────────────────────────────────────────────────────────────────────

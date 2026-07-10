@@ -24,7 +24,7 @@ jobs:
         run: uv python install 3.12.7
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync
 
       - name: Regressiecheck tegen baseline
         run: uv run scripts/benchmark.py --check
