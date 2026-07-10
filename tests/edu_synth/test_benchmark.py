@@ -67,3 +67,49 @@ def test_check_ignores_dataset_without_baseline():
     base = _baseline()
     current = [{**base["datasets"][0], "dataset": "nieuw"}]
     assert benchmark.check_against_baseline(base, current) == []
+
+
+# ── Longitudinaal spoor ───────────────────────────────────────────────────────────
+
+
+def _seq_baseline(**overrides) -> dict:
+    row = {
+        "dataset": "doorstroom",
+        "length_distance": 0.1567,
+        "temporal_worst": 0.1567,
+        "temporal_failed": 0,
+    }
+    row.update(overrides)
+    return {"sequential": [row]}
+
+
+def test_seq_check_no_regression_on_identical_run():
+    base = _seq_baseline()
+    current = list(base["sequential"])
+    assert benchmark.check_sequential_against_baseline(base, current) == []
+
+
+def test_seq_check_detects_worsened_temporal_metric():
+    base = _seq_baseline()
+    current = [{**base["sequential"][0], "temporal_worst": 0.5}]
+    regressions = benchmark.check_sequential_against_baseline(base, current)
+    assert len(regressions) == 1
+    assert regressions[0]["metric"] == "temporal_worst"
+
+
+def test_seq_check_ignores_fit_seconds():
+    # Wall-clock is niet gegate: een veel tragere fit is geen regressie.
+    base = _seq_baseline()
+    current = [{**base["sequential"][0], "fit_seconds": 99.0}]
+    assert benchmark.check_sequential_against_baseline(base, current) == []
+
+
+def test_longitudinal_ground_truth_is_deterministic_and_longitudinal():
+    a = benchmark._longitudinal_ground_truth(50, seed=42)
+    b = benchmark._longitudinal_ground_truth(50, seed=42)
+    assert a.equals(b)  # vaste seed → identieke data
+    assert list(a.columns) == ["student_id", "jaar", "status", "ec"]
+    assert a["student_id"].nunique() == 50
+    # Meerdere tijdstappen per entiteit én absorberende eindstaten aanwezig.
+    assert a.groupby("student_id").size().max() >= 2
+    assert {"gediplomeerd", "uitgestroomd"} & set(a["status"])

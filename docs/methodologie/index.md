@@ -47,6 +47,8 @@ Heeft een upload meerdere rijen per entiteit over de tijd (bv. één rij per stu
 
 Deze copula-aanpak is de aanbevolen default. Hij fit én samplet in seconden op CPU, behoudt de doorstroomkansen en genereert zowel categorische staten als numerieke kolommen per tijdstap.
 
+De benchmark-harness dekt dit pad met een vaste doorstroom-dataset: per run meet ze de temporele kwaliteit (overgangsmatrix-afstand, autocorrelatie, verdeling van trajectlengtes) plus de fit-tijd, met een regressie-baseline net als voor het tabulaire spoor. De fit-tijd wordt gerapporteerd maar niet gegate — wall-clock verschilt per machine.
+
 ### PAR als optie
 
 Onder *Synthesizer kiezen (geavanceerd)* staat SDV's `PARSynthesizer` (deep learning, LSTM) als alternatief. PAR is structureel trager — op CPU minuten in plaats van seconden — en scoort op kleine onderwijsdatasets vaak matiger, maar kan soms complexere temporele patronen leren. Kies PAR alleen als de copula tekortschiet. Het aantal epochs is instelbaar en de training toont een voortgangsbalk in procenten.
