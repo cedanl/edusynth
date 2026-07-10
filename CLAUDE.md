@@ -81,8 +81,11 @@ scripts/              # hulpscripts (download_datasets.py)
 ## Development Commands
 
 ```bash
-# Installeren
-uv sync --all-extras
+# Installeren — app-runtime (dit is wat een gebruiker/tester nodig heeft)
+uv sync
+
+# Installeren — dev-omgeving (test/lint + docs + demo)
+uv sync --all-groups
 
 # App starten
 uv run edu-synth app
