@@ -60,5 +60,19 @@
       "privacy_risk": "laag",
       "dcr_ratio": 4.689
     }
+  ],
+  "sequential": [
+    {
+      "dataset": "doorstroom",
+      "entities": 300,
+      "steps": 5,
+      "fit_seconds": 0.35,
+      "length_distance": 0.1567,
+      "temporal_worst": 0.1567,
+      "temporal_worst_col": "",
+      "temporal_failed": 0,
+      "verdict": "Goed",
+      "risk": "laag"
+    }
   ]
 }
