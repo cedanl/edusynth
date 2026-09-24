@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verkennen synthetische data-netwerken — CEDA (v2)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f6f5f1;
+    --card:#fffffe;
+    --ink:#1a1d24;
+    --muted:#5c616c;
+    --line:#e1ded4;
+    --accent:#0f6d68;
+    --accent-soft:#e2efec;
+    --amber:#8a5410;
+    --amber-soft:#f4ead6;
+    --green-soft:#e6efe1;
+    --red-soft:#f3e2df;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:"Source Serif 4",Georgia,serif;
+    font-size:17px;line-height:1.6;
+  }
+  .wrap{max-width:940px;margin:0 auto;padding:0 24px 96px}
+  h1,h2,h3,.ui{font-family:"Archivo",system-ui,sans-serif}
+
+  header.mast{border-bottom:2px solid var(--ink);padding:56px 0 22px;margin-bottom:8px}
+  .kicker{font-family:"Archivo",sans-serif;font-weight:600;font-size:.8rem;letter-spacing:.04em;color:var(--accent);text-transform:uppercase;margin:0 0 14px}
+  h1{font-size:2.5rem;line-height:1.08;font-weight:700;margin:0 0 18px;letter-spacing:-.01em}
+  .lead{font-size:1.12rem;color:var(--muted);max-width:64ch;margin:0}
+
+  nav.toc{margin:34px 0 0;background:var(--card);border:1px solid var(--line);border-radius:3px;padding:20px 26px}
+  nav.toc h2{font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 12px;font-weight:600}
+  nav.toc ol{margin:0;padding:0;list-style:none;counter-reset:t;columns:2;column-gap:34px}
+  nav.toc li{counter-increment:t;margin:0 0 9px;break-inside:avoid;font-family:"Archivo",sans-serif;font-size:.94rem}
+  nav.toc a{color:var(--ink);text-decoration:none;display:flex;gap:10px;align-items:baseline}
+  nav.toc a:hover{color:var(--accent)}
+  nav.toc a::before{content:counter(t);color:var(--accent);font-weight:600;min-width:1.2em}
+
+  section{margin-top:52px;scroll-margin-top:20px}
+  h2{font-size:1.5rem;font-weight:700;margin:0 0 4px;letter-spacing:-.01em}
+  h2 .num{color:var(--accent);font-weight:600;margin-right:.5ch}
+  .sub{color:var(--muted);font-size:.98rem;margin:0 0 22px}
+  h3{font-size:1.08rem;font-weight:600;margin:26px 0 8px}
+  p{margin:0 0 14px}
+  a{color:var(--accent)}
+  strong{font-weight:600}
+
+  .notes{background:var(--card);border:1px solid var(--line);border-radius:3px;padding:6px 26px 20px}
+  .notes h3{border-bottom:1px solid var(--line);padding-bottom:8px}
+  .notes ul{margin:6px 0 0;padding-left:20px}
+  .notes li{margin:6px 0}
+  .tag{font-family:"Archivo",sans-serif;font-size:.72rem;font-weight:600;color:#fff;background:var(--accent);
+    padding:2px 7px;border-radius:2px;vertical-align:middle;margin-right:6px}
+  .tag.gov{background:#5b4a86}
+  .tag.com{background:#8a5410}
+  .tag.net{background:#3a6ea5}
+
+  .byline{font-family:"Archivo",sans-serif;font-size:.82rem;color:var(--muted);
+    display:inline-flex;align-items:center;gap:8px;background:var(--accent-soft);
+    border:1px solid #bcded8;border-radius:2px;padding:6px 12px;margin:0 0 20px}
+  .byline b{color:var(--ink);font-weight:600}
+
+  .callout{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);
+    padding:18px 22px;border-radius:2px;margin:20px 0}
+  .callout p:last-child{margin-bottom:0}
+  .callout .h{font-family:"Archivo",sans-serif;font-weight:600;font-size:.82rem;text-transform:uppercase;letter-spacing:.04em;color:var(--accent);margin:0 0 8px}
+
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:3px;background:var(--card)}
+  table{border-collapse:collapse;width:100%;min-width:760px;font-family:"Archivo",sans-serif;font-size:.9rem}
+  th,td{text-align:left;vertical-align:top;padding:12px 14px;border-bottom:1px solid var(--line)}
+  thead th{background:#efeee8;font-weight:600;font-size:.82rem}
+  tbody tr:last-child td{border-bottom:none}
+  td.name{font-weight:600;white-space:nowrap}
+  td .lic{display:block;color:var(--muted);font-weight:500;font-size:.82rem;margin-top:2px}
+  tr.own td{background:var(--accent-soft)}
+  .yes{color:#0f6d68;font-weight:600}
+  .no{color:#a2483c;font-weight:600}
+  .part{color:var(--amber);font-weight:600}
+  .v-ok{background:var(--green-soft)}
+  .v-mid{background:var(--amber-soft)}
+  .v-no{background:var(--red-soft)}
+  .tnote{font-family:"Archivo",sans-serif;font-size:.84rem;color:var(--muted);margin:10px 2px 0}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:3px;padding:18px 22px}
+  .panel.have{border-top:3px solid var(--accent)}
+  .panel.todo{border-top:3px solid var(--amber)}
+  .panel h3{margin-top:0}
+  .panel ul{margin:0;padding-left:18px}
+  .panel li{margin:8px 0}
+
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:0}
+  ol.steps li{position:relative;padding:2px 0 22px 50px;margin:0}
+  ol.steps li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:0;
+    width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;
+    font-family:"Archivo",sans-serif;font-weight:600;font-size:1rem;display:grid;place-items:center}
+  ol.steps li:not(:last-child)::after{content:"";position:absolute;left:15px;top:34px;bottom:0;width:2px;background:var(--line)}
+  ol.steps b{font-family:"Archivo",sans-serif;display:block;margin-bottom:2px}
+
+  .opt{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--muted);border-radius:2px;padding:16px 20px;margin-top:18px}
+  .opt b{font-family:"Archivo",sans-serif}
+
+  .src{font-family:"Archivo",sans-serif;font-size:.86rem}
+  .src li{margin:5px 0}
+
+  footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem;font-family:"Archivo",sans-serif}
+
+  @media (max-width:680px){
+    h1{font-size:1.9rem}
+    .cols{grid-template-columns:1fr}
+    nav.toc ol{columns:1}
+    .wrap{padding:0 16px 64px}
+  }
+  @media print{
+    body{background:#fff}
+    .scroll,.notes,.panel,.callout{break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <p class="kicker">CEDA · Verkenning · v2</p>
+    <h1>Verkennen synthetische data-netwerken</h1>
+    <p class="lead">Verkenning van het synthetische-datalandschap in Nederland: wat er loopt, welke tools bruikbaar zijn, en waarvoor CEDA synthetische data kan inzetten.</p>
+
+    <nav class="toc">
+      <h2>Inhoud</h2>
+      <ol>
+        <li><a href="#s1">Notities uit het gesprek met Freek</a></li>
+        <li><a href="#s2">Landschap van tools</a></li>
+        <li><a href="#s3">Bruikbaar voor onze analyses?</a></li>
+        <li><a href="#s4">Concreet testplan</a></li>
+        <li><a href="#s5">CEDA-doel: instellingen maken zelf hun data</a></li>
+        <li><a href="#s6">Bronnen</a></li>
+      </ol>
+    </nav>
+  </header>
+
+  <section id="s1">
+    <h2><span class="num">1</span>Notities uit het gesprek met Freek</h2>
+    <p class="sub">Freek Dijkstra (SURF) is bezig met data- en privacyoplossingen, waarvan synthetisch er één is. Overzicht van wat er speelt.</p>
+    <div class="notes">
+      <h3>Universiteiten</h3>
+      <ul>
+        <li><span class="tag">Maastricht</span><strong>DP-CGANS</strong> (Chang Sun) — GAN's met differential privacy. Focus: statistische eigenschappen overnemen. Sommige (overheids)organisaties zijn hier terughoudend: juist doordat statistische eigenschappen precies worden overgenomen, kan de privacywinst kleiner zijn.</li>
+        <li><span class="tag">Utrecht</span><strong>Metasyn</strong> — focus op privacy. Legt alleen een grove kolombeschrijving vast in een metabestand (min/max e.d.), géén statistische verbanden.</li>
+        <li>Beide projecten lopen ook via <a href="https://tdcc-synthetic-data.nl/">tdcc-synthetic-data.nl</a>.</li>
+      </ul>
+      <h3>Overheid</h3>
+      <ul>
+        <li><span class="tag gov">DUO</span><strong>Lotte Pater</strong> gebruikt <strong>synthpop</strong> (R) en herontwerpt het. DUO <a href="https://duo.nl/open_onderwijsdata/onderwijs-algemeen/publicaties/resultaten-pilot-synthetische-data.jsp">publiceert al synthetische data</a>.</li>
+        <li><span class="tag gov">Opschaling</span>Het opschalingsticket heeft een product opgeleverd: het <strong>Consensus Document Synthetische Data</strong> (TNO, CBS, CJIB, DUO, LUMC, UMCG, UU, UWV, Belastingdienst, ICTU). Bruikbaar als gedeeld begrippenkader; DUO zit erin, dus het sluit aan op de onderwijskant.</li>
+      </ul>
+      <h3>Commerciële aanbieders</h3>
+      <ul>
+        <li><span class="tag com">Syntho</span><a href="https://www.syntho.ai/nl/">syntho.ai</a> — werkt onder meer met CBS.</li>
+        <li><span class="tag com">BlueGen</span><a href="https://bluegen.ai/">bluegen.ai</a> — differential privacy + federated learning; werkt met CBS, TU/e, TU Delft, UvA.</li>
+      </ul>
+      <h3>Netwerk</h3>
+      <ul>
+        <li><span class="tag net">NICPET</span>Nationaal Innovatiecentrum Privacy-Enhancing Technologies — <a href="https://nicpet.pleio.nl/">nicpet.pleio.nl</a>. Er was een <a href="https://nicpet.pleio.nl/events/view/54518f7c-89f7-4223-8e0f-f71e1de8b13a/17e-netwerkbijeenkomst-nicpet">sessie met Freek</a>, met <a href="https://nicpet.pleio.nl/news/view/92a48082-3c76-4b69-9053-1ee65dc36ef6/synthetische-data-namaaknederlanders-en-kunstheupen">verslag</a>.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="s2">
+    <h2><span class="num">2</span>Landschap van tools</h2>
+    <p class="sub">Open source (bruikbaar in CEDA's werkwijze) en commercieel. "Verbanden" = neemt de tool relaties tússen kolommen mee — nodig voor analyse, maar drukt de privacywinst.</p>
+    <p class="byline">Landschapsanalyse en beoordeling uitgevoerd door <b>Claude Opus 4.8 (High)</b></p>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Tool</th>
+            <th>Verbanden</th>
+            <th>Voordeel</th>
+            <th>Nadeel</th>
+            <th>NL-verband</th>
+            <th>Voor CEDA</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="own">
+            <td class="name">edu-synth<span class="lic">CEDA · Python · laag op SDV</span></td>
+            <td class="yes">ja (copula + PAR)</td>
+            <td>Genereert met Gaussian Copula, en PAR voor longitudinale data. Ingebouwd validatierapport (statistische getrouwheid, samenhang, kwaliteitsscore) én privacycheck (DCR/NNDR). Lokaal via Streamlit-app + CLI; export naar JSON/PDF.</td>
+            <td>Geen releases; single-table + longitudinaal, (nog) geen relationele/multi-tabel; erft de SDV-licentie eronder.</td>
+            <td>CEDA zelf</td>
+            <td>De bouwsteen waar we op verder ontwikkelen; dekt al veel.</td>
+          </tr>
+          <tr>
+            <td class="name">SDV<span class="lic">Python · BSL → MIT na 4 jr</span></td>
+            <td class="yes">volledig</td>
+            <td>Breedst: single, multi-tabel én tijdreeks. Enige open motor die longitudinaal + hiërarchisch aankan.</td>
+            <td>Deep-learning modellen vragen tuning en veel data; BSL is geen echte open source.</td>
+            <td>— (basis onder edu-synth)</td>
+            <td>Motor onder edu-synth; licentie is een expliciet besluitpunt.</td>
+          </tr>
+          <tr>
+            <td class="name">synthpop<span class="lic">R · GPL</span></td>
+            <td class="yes">statistisch</td>
+            <td>Uitlegbaar, ingebouwde disclosure-risk maten, echt open source.</td>
+            <td>Alleen crossectioneel, één tabel, alleen R.</td>
+            <td>DUO (Lotte Pater)</td>
+            <td>Sluit aan bij DUO. Valt af op longitudinaal/hiërarchisch.</td>
+          </tr>
+          <tr>
+            <td class="name">metasyn<span class="lic">Python · MIT</span></td>
+            <td class="no">geen</td>
+            <td>Maximale privacy, transparant/auditeerbaar metabestand, MIT.</td>
+            <td>Legt standaard geen verbanden tussen kolommen vast.</td>
+            <td>Universiteit Utrecht</td>
+            <td>Ideaal voor deelbare testdata; niet voor analyse. Goed contrast met edu-synth.</td>
+          </tr>
+          <tr>
+            <td class="name">DP-CGANS<span class="lic">Python · MIT</span></td>
+            <td class="part">+ privacy</td>
+            <td>Formele privacygarantie (differential privacy), open, NL-academisch.</td>
+            <td>Eén tabel, crossectioneel, in ontwikkeling, research-grade.</td>
+            <td>Maastricht University</td>
+            <td>Relevant als je DP wilt verkennen; dekt datastructuur niet.</td>
+          </tr>
+          <tr>
+            <td class="name">Syntho<span class="lic">commercieel · betaald</span></td>
+            <td class="yes">volledig</td>
+            <td>Alles-in-één, tijdreeks, on-prem, database-connectoren, support.</td>
+            <td>Geen open source, kost geld, niet als code te publiceren.</td>
+            <td>Amsterdam · werkt met CBS</td>
+            <td>Past niet bij open-werkwijze; bruikbaar als instellingen zelf licentie hebben.</td>
+          </tr>
+          <tr>
+            <td class="name">BlueGen<span class="lic">commercieel · betaald</span></td>
+            <td class="yes">volledig</td>
+            <td>Differential privacy + federated learning (data blijft on-premise per instelling).</td>
+            <td>Geen open source, kost geld.</td>
+            <td>Eindhoven · CBS, TU/e, TU Delft, UvA</td>
+            <td>Commercieel alternatief; buiten onze eigen ontwikkellijn.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="tnote">Techniekpunt: edu-synth draait standaard op de lichte Gaussian Copula en zet PAR in voor longitudinale data. Dat sluit aan bij de bevinding dat klassieke/statistische methoden op tabulaire data vaak een hogere kwaliteit leveren dan zware GANs (CTGAN). Relationele en multi-tabel-structuren (ouder-kind) blijven lastig — SDV kan dit (HMA), edu-synth nog niet.</p>
+  </section>
+
+  <section id="s3">
+    <h2><span class="num">3</span>Bruikbaar voor onze instroom/uitval-analyses?</h2>
+    <p class="sub">De kernvraag.</p>
+    <p>Voor onze analyses (instroomprognose, uitnodigingsregel) draait alles om de <strong>verbanden</strong> tussen variabelen. Daar zit spanning: hoe realistischer die verbanden, hoe bruikbaarder voor analyse, maar hoe groter het risico dat gevoelige informatie lekt. Daarom gaan we testen of edu-synth data oplevert die goed genoeg is voor onze analyses én tegelijk privacyvriendelijk blijft (§4).</p>
+    <p>Datzelfde testplan zegt ook iets over de lichtere toepassingen (ontwikkelen, testen, demo's, testdata bij repo's). Daar liggen de eisen lager — je hebt realistische structuur nodig, geen identieke analyse-uitkomst — maar of edu-synth ook dát nu al levert, moeten we net zo goed vaststellen. We nemen dus niets aan tot de test dat laat zien.</p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Use-case</th>
+            <th>Analyse (conclusies)</th>
+            <th>Ontwikkelen &amp; testen</th>
+            <th>Delen tussen instellingen</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="name">Instroomprognose</td>
+            <td class="v-mid">te testen</td>
+            <td class="v-mid">te testen</td>
+            <td class="v-mid">te testen (+ privacycheck)</td>
+          </tr>
+          <tr>
+            <td class="name">Uitnodigingsregel (uitval)</td>
+            <td class="v-mid">te testen</td>
+            <td class="v-mid">te testen</td>
+            <td class="v-mid">te testen (+ privacycheck)</td>
+          </tr>
+          <tr>
+            <td class="name">Code &amp; templates delen</td>
+            <td class="v-mid">n.v.t.</td>
+            <td class="v-mid">te testen</td>
+            <td class="v-mid">te testen</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="s4">
+    <h2><span class="num">4</span>Concreet testplan</h2>
+    <p class="sub">We maken met edu-synth een synthetische kopie van een dataset die we kennen, draaien er dezelfde analyse op, en kijken of de uitkomst gelijk is aan die op de echte data.</p>
+    <p>We hebben echte <strong>Mondriaan-data</strong> waarmee we werken. Daarmee toetsen we de <strong>uitnodigingsregel</strong>: welke eerstejaars een uitnodiging krijgen.</p>
+    <ol class="steps">
+      <li><b>Draai op de echte data.</b> Voer de uitnodigingsregel uit op de echte Mondriaan-data. Bewaar welke studenten geselecteerd worden en de modelscores (AUC, precision/recall). Dit is de meetlat.</li>
+      <li><b>Genereer een synthetische kopie.</b> Maak met edu-synth een synthetische versie van dezelfde dataset (Gaussian Copula; PAR als de data longitudinaal is).</li>
+      <li><b>Lees het validatierapport.</b> We houden de eigen drempels van edu-synth aan: statistische getrouwheid per kolom onder 0,2 (onder 0,1 = uitstekend), geen omgeklapte sterke verbanden, en een DCR-privacyratio boven 0,9 (laag herleidbaarheidsrisico). Het gebruiksoordeel moet minstens "bruikbaar" zijn.</li>
+      <li><b>Draai op de synthetische data.</b> Voer exact dezelfde uitnodigingsregel uit op de synthetische kopie.</li>
+      <li><b>Vergelijk met de meetlat.</b> Selecteert de regel dezelfde studenten en haalt het model vergelijkbare scores? Dit is de eigenlijke bruikbaarheidstoets — de stap die edu-synth zelf nog niet uitvoert.</li>
+      <li><b>Oordeel.</b> Haalt de synthetische data zowel de validatiedrempels (stap 3) als de bruikbaarheidstoets (stap 5), dan is de data goed genoeg én privacyvriendelijk voor deze analyse.</li>
+    </ol>
+
+    <div class="opt">
+      <b>Optioneel: contrast met metasyn.</b> Draai stap 2, 4 en 5 ook met metasyn in plaats van edu-synth. Metasyn legt geen verbanden tussen kolommen vast; het verschil in bruikbaarheid laat zien wat het meenemen van die verbanden oplevert.
+    </div>
+
+    <p style="margin-top:22px">Dit plan is concreet voor de uitnodigingsregel. De <strong>instroomprognose</strong> en andere analyses willen we ook toetsen, maar die draaien op andere data (o.a. Studielink-telbestanden) en vragen een eigen opzet — als vervolgstap.</p>
+  </section>
+
+  <section id="s5">
+    <h2><span class="num">5</span>CEDA-doel: instellingen maken zelf hun data</h2>
+    <p class="sub">De brede wens: een instelling maakt zelf en lokaal een synthetische versie van haar data en neemt die mee om te delen of te testen.</p>
+    <p>Dit doel is voor een groot deel al belegd in <a href="https://github.com/cedanl/edusynth"><strong>edu-synth</strong></a>, een applicatielaag op SDV voor data-analisten en onderzoekers bij NL hogeronderwijsinstellingen die synthetische data willen zonder SDV zelf te configureren.</p>
+
+    <div class="cols">
+      <div class="panel have">
+        <h3>Wat er al is</h3>
+        <ul>
+          <li>Lokaal genereren via Streamlit-app én CLI; data verlaat de instelling niet.</li>
+          <li>Synthese met Gaussian Copula, en PAR voor longitudinale data.</li>
+          <li>Validatierapport: statistische getrouwheid per kolom, samenhang tussen kolommen, sdmetrics-kwaliteitsscore en een gebruiksoordeel.</li>
+          <li>Ingebouwde privacycheck (DCR/NNDR) die het herleidbaarheidsrisico schat.</li>
+          <li>Rapport-export naar JSON en PDF.</li>
+        </ul>
+      </div>
+      <div class="panel todo">
+        <h3>Wat nog mist</h3>
+        <ul>
+          <li>Bruikbaarheidstoets op de échte analyse: draait ons model op synth met dezelfde uitkomst (stap 5 van het testplan)? Dit doet edu-synth nu niet.</li>
+          <li>Relationele/multi-tabel (hiërarchische) data; nu single-table + longitudinaal.</li>
+          <li>Ondersteuning voor de ontwikkelroute hieronder.</li>
+          <li>Let op: DCR/NNDR is een schatting, geen garantie.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout">
+      <p class="h">Onze werkwijze: ontwikkelen op synth, draaien op echt</p>
+      <p>Voor analyses waar de conclusie op echte data moet rusten, is dit onze aanpak: de onderzoeker ontwikkelt de analyse of syntax op de synthetische data, en draait die daarna op de echte data in een beveiligde omgeving. De uitkomst rust dan op echte data, niet op nagemaakte verbanden. DUO, LROI en CBS werken al zo, wat laat zien dat de aanpak houdbaar is. Voor de uitnodigingsregel en instroomprognose betekent het: synthetische data als ontwikkel-/oefenomgeving, echte data voor het eindresultaat.</p>
+    </div>
+  </section>
+
+  <section id="s6">
+    <h2><span class="num">6</span>Bronnen</h2>
+    <ul class="src">
+      <li>edu-synth (CEDA) — <a href="https://github.com/cedanl/edusynth">github.com/cedanl/edusynth</a> · <a href="https://cedanl.github.io/edusynth/">docs</a></li>
+      <li>Consensus Document Synthetische Data v1.0 (opschalingsticket; TNO e.a.)</li>
+      <li>TDCC synthetische data — <a href="https://tdcc-synthetic-data.nl/">tdcc-synthetic-data.nl</a></li>
+      <li>DP-CGANS — <a href="https://github.com/sunchang0124/dp_cgans">github.com/sunchang0124/dp_cgans</a></li>
+      <li>Metasyn — <a href="https://github.com/sodascience/metasyn">github.com/sodascience/metasyn</a></li>
+      <li>synthpop — <a href="https://www.synthpop.org.uk/">synthpop.org.uk</a> · DUO-pilot — <a href="https://duo.nl/open_onderwijsdata/onderwijs-algemeen/publicaties/resultaten-pilot-synthetische-data.jsp">resultaten-pilot-synthetische-data</a></li>
+      <li>SDV — <a href="https://github.com/sdv-dev/SDV">github.com/sdv-dev/SDV</a></li>
+      <li>Syntho — <a href="https://www.syntho.ai/nl/">syntho.ai</a> · BlueGen — <a href="https://bluegen.ai/">bluegen.ai</a></li>
+      <li>NICPET — <a href="https://nicpet.pleio.nl/">nicpet.pleio.nl</a></li>
+    </ul>
+  </section>
+
+  <footer>
+    CEDA — Centre for Educational Data Analytics · landschapsanalyse door Claude Opus 4.8 (High) · sept 2026
+  </footer>
+
+</div>
+</body>
+</html>
