@@ -17,6 +17,7 @@ from edu_synth.core.synthesize import (
     _schema_distributions,
     build_sequential_metadata,
     detect_datetime_format,
+    detect_terminal_states,
     fit,
     fit_par,
     fit_sequential,
@@ -428,6 +429,56 @@ def test_fit_sequential_refuses_multiple_rows_per_timestep():
     df = pd.concat([df, df.head(3)])
     with pytest.raises(ValueError, match="meerdere rijen"):
         fit_sequential(df, "student_id", "jaar")
+
+
+def _rows_after_terminal(df: pd.DataFrame, idx: str, col: str, terminal: set) -> int:
+    """Aantal rijen waarvan de vorige rij in dezelfde reeks een eindstaat had."""
+    ordered = df.sort_values(["student_id", idx])
+    previous = ordered.groupby("student_id")[col].shift()
+    return int(previous.isin(terminal).sum())
+
+
+@pytest.mark.parametrize(("fixture", "idx"), LONGITUDINAL_FIXTURES.items())
+def test_sample_sequential_stops_at_numeric_terminal_state(fixture, idx):
+    # Numerieke 0/1-eindvlag in plaats van de tekstkolom: 1 staat alleen op de laatste rij.
+    real = pd.read_csv(FIXTURES / fixture)
+    real["afgerond"] = (real.pop("status") != "ingeschreven").astype(int)
+    model = fit_sequential(real, "student_id", idx, seed=0)
+    assert model.terminal["afgerond"] == {1}
+    synth = sample_sequential(model, n_sequences=200)
+    assert _rows_after_terminal(synth, idx, "afgerond", {1}) == 0
+
+
+@pytest.mark.parametrize(("fixture", "idx"), LONGITUDINAL_FIXTURES.items())
+def test_sample_sequential_stops_at_categorical_terminal_state(fixture, idx):
+    real = pd.read_csv(FIXTURES / fixture)
+    model = fit_sequential(real, "student_id", idx, seed=0)
+    assert model.terminal["status"] == {"gediplomeerd", "uitgestroomd"}
+    synth = sample_sequential(model, n_sequences=200)
+    assert _rows_after_terminal(synth, idx, "status", model.terminal["status"]) == 0
+
+
+def test_detect_terminal_states_ignores_rare_and_continuous_values():
+    real = pd.read_csv(FIXTURES / "long_jaar_gespreid.csv")
+    last = real.groupby("student_id").cumcount(ascending=False) == 0
+    # Een waarde die maar één keer voorkomt, toevallig op een laatste rij, is geen regel.
+    real["code"] = "a"
+    real.loc[last.idxmax(), "code"] = "zeldzaam"
+    terminal = detect_terminal_states(real, "student_id", "jaar", ["status", "code", "ec"])
+    assert terminal["code"] == set()
+    assert "ec" not in terminal  # continue kolom doet niet mee
+
+
+def test_detect_terminal_states_tolerates_rare_exception():
+    # Een eindstaat met één uitzondering in de echte data blijft een eindstaat (≥ 99%).
+    df = _doorstroom_df(n_students=400)
+    ended = df.groupby("student_id").tail(1)
+    sid = ended.loc[ended["status"] == "gediplomeerd", "student_id"].iloc[0]
+    jaar = df.loc[df["student_id"] == sid, "jaar"].max() + 1
+    extra = {"student_id": sid, "jaar": jaar, "status": "ingeschreven", "ec": 0.0}
+    df = pd.concat([df, pd.DataFrame([extra])], ignore_index=True)
+    terminal = detect_terminal_states(df, "student_id", "jaar", ["status"])
+    assert "gediplomeerd" in terminal["status"]
 
 
 def test_fit_par_returns_long_format():
