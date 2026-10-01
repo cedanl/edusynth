@@ -7,7 +7,7 @@ import random
 import re
 from collections.abc import Callable
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -472,6 +472,7 @@ _RULE_COVERAGE = 0.99
 _CHANCE_LEVEL = 0.01
 _SEQ_START_COL = "__seq_start__"
 _DT_PREFIX = "__dt__t"
+_AXIS_COL = "__axis__"
 _DAY = pd.Timedelta(days=1)
 _EPOCH = pd.Timestamp(0)
 
@@ -496,6 +497,7 @@ class SequentialCopulaModel:
     dt_max: float
     dt_integer: bool  # echte stapafstanden zijn gehele getallen → afronden
     terminal: dict[str, set]  # per kolom: waarden die een reeks beëindigen
+    patterns: SequencePatterns  # kolommen met een vaste relatie tot de reeks
     fallback: dict[str, Any]  # per kolom: waarde als forward-fill niets heeft (mode/mediaan)
     max_len: int  # langste reeks in de echte data
 
@@ -534,6 +536,28 @@ def _from_axis(value: float, model: SequentialCopulaModel) -> Any:
     return model.index_levels[round(value) - 1]
 
 
+def _is_discrete(values: pd.Series) -> bool:
+    """Heeft de kolom weinig verschillende waarden? Continue getalkolommen niet."""
+    return not (pd.api.types.is_numeric_dtype(values) and values.nunique() >= _MIN_UNIQUE_FOR_KDE)
+
+
+def _values_confined_to(values: pd.Series, at_position: pd.Series) -> set:
+    """Waarden die (vrijwel) alleen op de rijen van *at_position* voorkomen.
+
+    Een waarde moet vaak genoeg voorkomen: staat ze toevallig een paar keer op zo'n
+    rij, dan is dat geen regel. De minimale frequentie volgt uit de kans dat een
+    willekeurige rij op die positie staat.
+    """
+    p_position = at_position.mean()
+    if p_position >= 1:
+        return set()
+    min_support = math.ceil(math.log(_CHANCE_LEVEL) / math.log(p_position))
+    counts = values.value_counts()
+    elsewhere = values[~at_position].value_counts().reindex(counts.index, fill_value=0)
+    keep = (counts >= min_support) & (elsewhere <= (1 - _RULE_COVERAGE) * counts)
+    return set(counts.index[keep])
+
+
 def detect_terminal_states(
     df: pd.DataFrame, seq_key: str, seq_index: str, columns: list[str]
 ) -> dict[str, set]:
@@ -544,27 +568,119 @@ def detect_terminal_states(
     (gediplomeerd, uitgestroomd, een 0/1-eindvlag). Zo hoeven we die staten niet
     hard te coderen. Elke kolom met weinig verschillende waarden doet mee, ongeacht
     het datatype; continue numerieke kolommen niet.
-
-    Een waarde moet vaak genoeg voorkomen: staat een waarde toevallig een paar keer
-    op de laatste rij van een reeks, dan is dat geen regel. De minimale frequentie
-    volgt uit de kans dat een willekeurige rij de laatste is.
     """
     ordered = df.sort_values([seq_key, seq_index])
-    by_entity = ordered.groupby(seq_key, sort=False)
-    has_successor = by_entity.cumcount(ascending=False) > 0
-    p_last = by_entity.ngroups / len(ordered)
-    min_support = math.ceil(math.log(_CHANCE_LEVEL) / math.log(p_last)) if p_last < 1 else math.inf
+    is_last = ordered.groupby(seq_key, sort=False).cumcount(ascending=False) == 0
+    return {
+        col: _values_confined_to(ordered[col], is_last)
+        for col in columns
+        if _is_discrete(ordered[col])
+    }
 
-    terminal: dict[str, set] = {}
+
+@dataclass
+class SequencePatterns:
+    """Vaste relaties tussen kolommen en de reeks, geleerd uit de echte data."""
+
+    constant: list[str] = field(default_factory=list)
+    # kolom → ("step", c): +c per rij, of ("time", c): +c per eenheid op de tijd-as
+    counters: dict[str, tuple[str, float]] = field(default_factory=dict)
+    # kolom → (waarden alleen op de eerste rij, vervanging op latere rijen,
+    #          vaste waarde voor de eerste rij of None)
+    first_only: dict[str, tuple[set, Any, Any]] = field(default_factory=dict)
+
+
+def _holds_per_entity(ok: pd.Series, entity: pd.Series) -> bool:
+    """Geldt *ok* op alle rijen van (vrijwel) elke entiteit?"""
+    return ok.groupby(entity).all().mean() >= _RULE_COVERAGE
+
+
+def _detect_counter(
+    values: pd.Series, dt: pd.Series, entity: pd.Series
+) -> tuple[str, float] | None:
+    """Loopt de kolom per rij (``step``) of per tijdseenheid (``time``) vast op?"""
+    diff = values.groupby(entity).diff()
+    has_prev = dt.notna()
+    diff, dt, entity = diff[has_prev], dt[has_prev], entity[has_prev]
+    for kind, unit in (("step", 1.0), ("time", dt)):
+        rate = (diff / unit).mode()
+        if rate.empty or rate.iloc[0] == 0:
+            continue
+        c = float(rate.iloc[0])
+        if _holds_per_entity(pd.Series(np.isclose(diff, c * unit), index=diff.index), entity):
+            return kind, c
+    return None
+
+
+def detect_sequence_patterns(
+    df: pd.DataFrame, seq_key: str, seq_index: str, columns: list[str]
+) -> SequencePatterns:
+    """Leer welke kolommen een vaste relatie met de reeks hebben.
+
+    Vier generieke patronen, elk alleen als het bij (vrijwel) alle entiteiten geldt:
+    constant per entiteit, een teller die per rij of per tijdseenheid met een vaste
+    waarde oploopt, en een waarde die alleen op de eerste rij voorkomt. Het vierde
+    patroon, een waarde die alleen op de laatste rij voorkomt, is een eindstaat (zie
+    :func:`detect_terminal_states`). Tellers per tijdseenheid vragen een numerieke
+    *seq_index*.
+    """
+    ordered = df.sort_values([seq_key, seq_index])
+    entity = ordered[seq_key]
+    by_entity = ordered.groupby(seq_key, sort=False)
+    is_first = by_entity.cumcount() == 0
+    multi = by_entity[seq_key].transform("size") > 1
+    dt = by_entity[seq_index].diff() if pd.api.types.is_numeric_dtype(ordered[seq_index]) else None
+    patterns = SequencePatterns()
+    if not multi.any():
+        return patterns
+
     for col in columns:
         values = ordered[col]
-        if pd.api.types.is_numeric_dtype(values) and values.nunique() >= _MIN_UNIQUE_FOR_KDE:
+        first = by_entity[col].transform("first")
+        same_as_first = values.eq(first) | (values.isna() & first.isna())
+        if _holds_per_entity(same_as_first[multi], entity[multi]):
+            patterns.constant.append(col)
             continue
-        counts = values.value_counts()
-        continued = values[has_successor].value_counts().reindex(counts.index, fill_value=0)
-        ends = (counts >= min_support) & (continued <= (1 - _RULE_COVERAGE) * counts)
-        terminal[col] = set(counts.index[ends])
-    return terminal
+        if pd.api.types.is_numeric_dtype(values):
+            step_dt = dt if dt is not None else pd.Series(1.0, index=values.index).where(~is_first)
+            counter = _detect_counter(values, step_dt, entity)
+            if counter is not None:
+                patterns.counters[col] = counter
+                continue
+        if not _is_discrete(values):
+            continue
+        first_values = _values_confined_to(values, is_first)
+        if first_values:
+            later = values[~is_first & ~values.isin(first_values)]
+            first_fill = values[is_first].mode()
+            always = values[is_first].isin(first_values).mean() >= _RULE_COVERAGE
+            patterns.first_only[col] = (
+                first_values,
+                later.mode().iloc[0] if not later.empty else None,
+                first_fill.iloc[0] if always and not first_fill.empty else None,
+            )
+    return patterns
+
+
+def _apply_sequence_patterns(
+    out: pd.DataFrame, seq_key: str, axis_col: str, patterns: SequencePatterns
+) -> pd.DataFrame:
+    """Leid kolommen met een vast patroon opnieuw af uit de gesamplede reeks."""
+    by_entity = out.groupby(seq_key, sort=False)
+    step = by_entity.cumcount()
+    is_first = step == 0
+    for col in patterns.constant:
+        out[col] = by_entity[col].transform("first")
+    for col, (kind, c) in patterns.counters.items():
+        start = pd.to_numeric(out[col], errors="coerce").groupby(out[seq_key]).transform("first")
+        offset = step if kind == "step" else out[axis_col] - by_entity[axis_col].transform("first")
+        out[col] = start + c * offset
+    for col, (first_values, replacement, first_fill) in patterns.first_only.items():
+        if replacement is not None:
+            out.loc[~is_first & out[col].isin(first_values), col] = replacement
+        if first_fill is not None:
+            out.loc[is_first & ~out[col].isin(first_values), col] = first_fill
+    return out
 
 
 def _to_wide(ordered: pd.DataFrame, seq_key: str, feature_cols: list[str]) -> pd.DataFrame:
@@ -623,12 +739,12 @@ def fit_sequential(
     level_axis = sorted(axis.unique().tolist())
     levels = df[seq_index].groupby(axis).first()  # één originele waarde per as-positie
 
-    ordered = df.assign(__axis__=axis).sort_values([seq_key, "__axis__"])
+    ordered = df.assign(**{_AXIS_COL: axis}).sort_values([seq_key, _AXIS_COL])
     by_entity = ordered.groupby(seq_key, sort=False)
     ordered["__step__"] = by_entity.cumcount() + 1
-    ordered["__dt__"] = by_entity["__axis__"].diff()
+    ordered["__dt__"] = by_entity[_AXIS_COL].diff()
     level_pos = {a: i + 1 for i, a in enumerate(level_axis)}
-    ordered["__start__"] = by_entity["__axis__"].transform("first").map(level_pos)
+    ordered["__start__"] = by_entity[_AXIS_COL].transform("first").map(level_pos)
     max_len = int(ordered["__step__"].max())
 
     # Generieke vormchecks: blokkeer alleen data die deze aanpak echt niet aankan,
@@ -653,7 +769,8 @@ def fit_sequential(
             "die verwerkt lange reeksen direct zonder deze beperking."
         )
 
-    terminal = detect_terminal_states(ordered, seq_key, "__axis__", feature_cols)
+    terminal = detect_terminal_states(ordered, seq_key, _AXIS_COL, feature_cols)
+    patterns = detect_sequence_patterns(ordered, seq_key, _AXIS_COL, feature_cols)
 
     fallback: dict[str, Any] = {}
     for feat in feature_cols:
@@ -686,6 +803,7 @@ def fit_sequential(
         dt_max=float(dts.max()),
         dt_integer=bool(np.allclose(dts, dts.round())),
         terminal=terminal,
+        patterns=patterns,
         fallback=fallback,
         max_len=max_len,
     )
@@ -762,7 +880,11 @@ def sample_sequential(model: SequentialCopulaModel, n_sequences: int) -> pd.Data
                 axis += _resolve_step(r.get(f"{_DT_PREFIX}{t}"), model)
                 if axis > last_level:  # voorbij het laatste waargenomen tijdniveau
                     break
-            record = {model.seq_key: new_id, model.seq_index: _from_axis(axis, model)}
+            record = {
+                model.seq_key: new_id,
+                model.seq_index: _from_axis(axis, model),
+                _AXIS_COL: axis,
+            }
             for feat in model.feature_cols:
                 val = r.get(f"{feat}__t{t}")
                 if _is_missing(val):  # ontbrekende waarde → draag laatst bekende (of fallback) door
@@ -771,7 +893,7 @@ def sample_sequential(model: SequentialCopulaModel, n_sequences: int) -> pd.Data
                 record[feat] = val
             rows.append(record)
 
-    out = pd.DataFrame(rows)
+    out = _apply_sequence_patterns(pd.DataFrame(rows), model.seq_key, _AXIS_COL, model.patterns)
     for feat, dtype in model.feature_dtypes.items():
         out[feat] = _coerce_like(out[feat], dtype)
     out[model.seq_index] = _coerce_like(out[model.seq_index], model.index_dtype)

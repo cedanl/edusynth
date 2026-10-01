@@ -481,6 +481,39 @@ def test_detect_terminal_states_tolerates_rare_exception():
     assert "gediplomeerd" in terminal["status"]
 
 
+@pytest.mark.parametrize(("fixture", "idx"), LONGITUDINAL_FIXTURES.items())
+def test_sample_sequential_keeps_fixed_patterns(fixture, idx):
+    real = pd.read_csv(FIXTURES / fixture)
+    model = fit_sequential(real, "student_id", idx, seed=0)
+    assert "geslacht" in model.patterns.constant
+    assert "verblijfsjaar" in model.patterns.counters
+    assert "eerstejaars" in model.patterns.first_only
+    # Een patroon dat maar bij ~90% van de entiteiten geldt, wordt niet afgedwongen.
+    assert "bijna_teller" not in model.patterns.constant
+    assert "bijna_teller" not in model.patterns.counters
+
+    synth = sample_sequential(model, n_sequences=200).sort_values(["student_id", idx])
+    by_entity = synth.groupby("student_id")
+    step = by_entity.cumcount()
+    assert (by_entity["geslacht"].nunique() == 1).all()
+    assert (synth["verblijfsjaar"] == step + 1).all()
+    assert (synth.loc[step > 0, "eerstejaars"] == 0).all()
+    assert (synth.loc[step == 0, "eerstejaars"] == 1).all()
+
+
+def test_detect_sequence_patterns_counter_per_time_unit():
+    # Met onderbrekingen loopt leeftijd op met de tijd, niet per rij.
+    real = pd.read_csv(FIXTURES / "long_onderbreking.csv")
+    model = fit_sequential(real, "student_id", "jaar", seed=0)
+    assert model.patterns.counters["leeftijd"] == ("time", 1.0)
+    assert model.patterns.counters["verblijfsjaar"] == ("step", 1.0)
+    synth = sample_sequential(model, n_sequences=200)
+    by_entity = synth.groupby("student_id")
+    age_gain = synth["leeftijd"] - by_entity["leeftijd"].transform("first")
+    years_gone = synth["jaar"] - by_entity["jaar"].transform("first")
+    assert (age_gain == years_gone).all()
+
+
 def test_fit_par_returns_long_format():
     df = _longitudinal_df()
     model = fit_par(df, "student_id", "studiejaar", epochs=1, seed=1)
