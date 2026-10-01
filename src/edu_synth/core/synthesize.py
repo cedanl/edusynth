@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 import re
 from collections.abc import Callable
@@ -459,11 +460,16 @@ def build_sequential_metadata(df: pd.DataFrame, seq_key: str, seq_index: str) ->
 # Twee reconstructie-regels houden de reeksen geldig:
 #   1. De reekslengte komt uit een meegemodelleerde ``__seq_len__``-kolom, niet uit
 #      het (ruizige) NaN-patroon — zo blijft de lengteverdeling kloppen.
-#   2. Een reeks stopt bij een *terminale* staat (een categorie die in de echte data
-#      nooit een opvolger heeft, bv. gediplomeerd/uitgestroomd) — zo ontstaan geen
+#   2. Een reeks stopt bij een *terminale* staat (een waarde die in de echte data
+#      nooit een opvolger heeft, bv. gediplomeerd/uitgestroomd of een 0/1-eindvlag,
+#      in een tekst- of getalkolom met weinig verschillende waarden) — zo ontstaan geen
 #      onmogelijke paden (actieve staat ná een eindstaat).
 
 _SEQ_LEN_COL = "__seq_len__"
+# Een geleerde reeksregel geldt alleen als die in (vrijwel) alle echte gevallen opgaat.
+_RULE_COVERAGE = 0.99
+# Kans waaronder een patroon niet meer als toeval geldt.
+_CHANCE_LEVEL = 0.01
 _SEQ_START_COL = "__seq_start__"
 _DT_PREFIX = "__dt__t"
 _DAY = pd.Timedelta(days=1)
@@ -489,7 +495,7 @@ class SequentialCopulaModel:
     dt_min: float
     dt_max: float
     dt_integer: bool  # echte stapafstanden zijn gehele getallen → afronden
-    terminal: dict[str, set]  # per categorische kolom: waarden die een reeks beëindigen
+    terminal: dict[str, set]  # per kolom: waarden die een reeks beëindigen
     fallback: dict[str, Any]  # per kolom: waarde als forward-fill niets heeft (mode/mediaan)
     max_len: int  # langste reeks in de echte data
 
@@ -528,29 +534,36 @@ def _from_axis(value: float, model: SequentialCopulaModel) -> Any:
     return model.index_levels[round(value) - 1]
 
 
-def _learn_terminal_states(
-    df: pd.DataFrame, seq_key: str, seq_index: str, cat_cols: list[str]
+def detect_terminal_states(
+    df: pd.DataFrame, seq_key: str, seq_index: str, columns: list[str]
 ) -> dict[str, set]:
-    """Leer per categorische kolom welke waarden *terminaal* zijn.
+    """Leer per kolom welke waarden een reeks beëindigen (*terminaal* zijn).
 
-    Een waarde is terminaal als ze in de echte data nooit een opvolgende rij binnen
-    dezelfde entiteit heeft — precies het gedrag van een absorberende staat
-    (gediplomeerd, uitgestroomd). Zo hoeven we die staten niet hard te coderen.
+    Een waarde is terminaal als ze in de echte data (vrijwel) nooit een opvolgende
+    rij binnen dezelfde entiteit heeft: het gedrag van een absorberende staat
+    (gediplomeerd, uitgestroomd, een 0/1-eindvlag). Zo hoeven we die staten niet
+    hard te coderen. Elke kolom met weinig verschillende waarden doet mee, ongeacht
+    het datatype; continue numerieke kolommen niet.
+
+    Een waarde moet vaak genoeg voorkomen: staat een waarde toevallig een paar keer
+    op de laatste rij van een reeks, dan is dat geen regel. De minimale frequentie
+    volgt uit de kans dat een willekeurige rij de laatste is.
     """
     ordered = df.sort_values([seq_key, seq_index])
+    by_entity = ordered.groupby(seq_key, sort=False)
+    has_successor = by_entity.cumcount(ascending=False) > 0
+    p_last = by_entity.ngroups / len(ordered)
+    min_support = math.ceil(math.log(_CHANCE_LEVEL) / math.log(p_last)) if p_last < 1 else math.inf
+
     terminal: dict[str, set] = {}
-    for col in cat_cols:
-        seen: set = set()
-        with_successor: set = set()
-        for _, g in ordered.groupby(seq_key, sort=False):
-            vals = g[col].tolist()
-            for v in vals:
-                if pd.notna(v):
-                    seen.add(v)
-            for v in vals[:-1]:  # alles behalve de laatste rij heeft een opvolger
-                if pd.notna(v):
-                    with_successor.add(v)
-        terminal[col] = seen - with_successor
+    for col in columns:
+        values = ordered[col]
+        if pd.api.types.is_numeric_dtype(values) and values.nunique() >= _MIN_UNIQUE_FOR_KDE:
+            continue
+        counts = values.value_counts()
+        continued = values[has_successor].value_counts().reindex(counts.index, fill_value=0)
+        ends = (counts >= min_support) & (continued <= (1 - _RULE_COVERAGE) * counts)
+        terminal[col] = set(counts.index[ends])
     return terminal
 
 
@@ -640,8 +653,7 @@ def fit_sequential(
             "die verwerkt lange reeksen direct zonder deze beperking."
         )
 
-    cat_cols = [c for c in feature_cols if not pd.api.types.is_numeric_dtype(df[c])]
-    terminal = _learn_terminal_states(ordered, seq_key, "__axis__", cat_cols)
+    terminal = detect_terminal_states(ordered, seq_key, "__axis__", feature_cols)
 
     fallback: dict[str, Any] = {}
     for feat in feature_cols:
