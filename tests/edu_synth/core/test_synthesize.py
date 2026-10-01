@@ -366,6 +366,70 @@ def test_fit_sequential_refuses_degenerate_wide():
         fit_sequential(df, "id", "jaar")
 
 
+# Vier vormen longitudinale data: gespreide instroom, onderbrekingen, onregelmatige
+# datum-index en een tijdlabel als tekst.
+LONGITUDINAL_FIXTURES = {
+    "long_jaar_gespreid.csv": "jaar",
+    "long_onderbreking.csv": "jaar",
+    "long_datum.csv": "peildatum",
+    "long_label.csv": "studiejaar",
+}
+
+
+def _compute_sequence_stats(df: pd.DataFrame, idx: str, real_idx: pd.Series) -> dict:
+    """Startmoment, reekslengte en stapafstand per entiteit, op een numerieke tijd-as."""
+    if pd.api.types.is_numeric_dtype(real_idx):
+        axis = df[idx].astype(float)
+    elif detect_datetime_format(real_idx):
+        axis = (pd.to_datetime(df[idx]) - pd.Timestamp(0)).dt.days.astype(float)
+    else:
+        axis = df[idx].map({v: i for i, v in enumerate(sorted(real_idx.unique()))})
+    by_entity = df.assign(a=axis).sort_values(["student_id", "a"]).groupby("student_id")["a"]
+    return {
+        "starts": by_entity.min(),
+        "lengths": by_entity.size(),
+        "steps": by_entity.diff().dropna(),
+        "axis": axis,
+    }
+
+
+@pytest.mark.parametrize(("fixture", "idx"), LONGITUDINAL_FIXTURES.items())
+def test_sample_sequential_keeps_start_length_and_steps(fixture, idx):
+    real = pd.read_csv(FIXTURES / fixture)
+    model = fit_sequential(real, "student_id", idx, seed=0)
+    synth = sample_sequential(model, n_sequences=300)
+    r = _compute_sequence_stats(real, idx, real[idx])
+    s = _compute_sequence_stats(synth, idx, real[idx])
+
+    # Startmomenten zijn gespreid zoals in de echte data, niet allemaal het eerste niveau.
+    first = r["starts"].min()
+    assert abs((r["starts"] == first).mean() - (s["starts"] == first).mean()) < 0.15
+    assert abs(r["starts"].mean() - s["starts"].mean()) < 0.1 * (r["axis"].max() - first)
+    assert abs(r["lengths"].mean() - s["lengths"].mean()) < 0.5
+    assert abs(r["steps"].mean() - s["steps"].mean()) < 0.2 * r["steps"].mean()
+    # Geen tijdstip buiten het waargenomen bereik, geen dubbele stap.
+    assert s["axis"].between(r["axis"].min(), r["axis"].max()).all()
+    assert (s["steps"] > 0).all()
+    if model.index_kind == "label":
+        assert set(synth[idx]) <= set(real[idx])
+
+
+def test_sample_sequential_keeps_gaps():
+    real = pd.read_csv(FIXTURES / "long_onderbreking.csv")
+    model = fit_sequential(real, "student_id", "jaar", seed=0)
+    synth = sample_sequential(model, n_sequences=300)
+    r = _compute_sequence_stats(real, "jaar", real["jaar"])
+    s = _compute_sequence_stats(synth, "jaar", real["jaar"])
+    assert abs((r["steps"] > 1).mean() - (s["steps"] > 1).mean()) < 0.1
+
+
+def test_fit_sequential_refuses_multiple_rows_per_timestep():
+    df = pd.read_csv(FIXTURES / "long_jaar_gespreid.csv")
+    df = pd.concat([df, df.head(3)])
+    with pytest.raises(ValueError, match="meerdere rijen"):
+        fit_sequential(df, "student_id", "jaar")
+
+
 def test_fit_par_returns_long_format():
     df = _longitudinal_df()
     model = fit_par(df, "student_id", "studiejaar", epochs=1, seed=1)

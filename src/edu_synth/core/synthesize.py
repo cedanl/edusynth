@@ -447,9 +447,14 @@ def build_sequential_metadata(df: pd.DataFrame, seq_key: str, seq_index: str) ->
 #
 # PAR (deep learning) is op CPU minutenlang en matig op kleine onderwijsdatasets.
 # In plaats daarvan zetten we de longitudinale data plat (één rij per entiteit,
-# kolommen ``feature__tN`` per tijdstap) en laten we de bestaande GaussianCopula die
+# kolommen ``feature__tN`` per stap) en laten we de bestaande GaussianCopula die
 # leren — inclusief de cross-tijd-correlaties (dus doorstroomkansen) en een expliciete
 # reekslengte. Bij sampling reconstrueren we het originele long-format terug.
+#
+# Stappen zijn relatief: stap 1 is de eerste waarneming van een entiteit, niet het
+# eerste tijdniveau van de dataset. Het startmoment (``__seq_start__``, positie in de
+# geordende tijdniveaus) en de afstand tot de vorige stap (``__dt__tN``) worden
+# meegemodelleerd, zodat gespreide instroom en onderbrekingen behouden blijven.
 #
 # Twee reconstructie-regels houden de reeksen geldig:
 #   1. De reekslengte komt uit een meegemodelleerde ``__seq_len__``-kolom, niet uit
@@ -459,6 +464,10 @@ def build_sequential_metadata(df: pd.DataFrame, seq_key: str, seq_index: str) ->
 #      onmogelijke paden (actieve staat ná een eindstaat).
 
 _SEQ_LEN_COL = "__seq_len__"
+_SEQ_START_COL = "__seq_start__"
+_DT_PREFIX = "__dt__t"
+_DAY = pd.Timedelta(days=1)
+_EPOCH = pd.Timestamp(0)
 
 
 @dataclass
@@ -471,11 +480,52 @@ class SequentialCopulaModel:
     original_columns: list[str]
     feature_cols: list[str]
     feature_dtypes: dict[str, Any]
-    index_levels: list  # geordende originele tijd-waarden; positie t → index_levels[t-1]
+    index_kind: str  # 'numeric', 'datetime' of 'label'
+    index_format: str | None  # strftime-formaat bij een datum als tekst
+    index_levels: list  # geordende originele tijd-waarden
+    level_axis: list[float]  # tijd-as-positie per niveau, zelfde volgorde
     index_dtype: Any
+    dt_mode: float  # meest voorkomende stapafstand, voor een ontbrekende gesamplede
+    dt_min: float
+    dt_max: float
+    dt_integer: bool  # echte stapafstanden zijn gehele getallen → afronden
     terminal: dict[str, set]  # per categorische kolom: waarden die een reeks beëindigen
     fallback: dict[str, Any]  # per kolom: waarde als forward-fill niets heeft (mode/mediaan)
-    max_len: int
+    max_len: int  # langste reeks in de echte data
+
+
+def _detect_index_kind(index: pd.Series) -> tuple[str, str | None]:
+    """Soort tijd-as: ``numeric``, ``datetime`` of ``label``, plus het datumformaat."""
+    if pd.api.types.is_numeric_dtype(index):
+        return "numeric", None
+    if pd.api.types.is_datetime64_any_dtype(index):
+        return "datetime", None
+    if (fmt := detect_datetime_format(index)) is not None:
+        return "datetime", fmt
+    return "label", None
+
+
+def _to_axis(index: pd.Series, kind: str, fmt: str | None, labels: list) -> pd.Series:
+    """Zet tijd-waarden om naar een numerieke as waarop afstanden zinvol zijn.
+
+    Jaartal of getal: de waarde zelf. Datum: dagen. Tijdlabel (bv. ``2022-2023``):
+    positie in de gesorteerde labels, dus de afstand telt in niveaus.
+    """
+    if kind == "numeric":
+        return index.astype(float)
+    if kind == "datetime":
+        return (pd.to_datetime(index, format=fmt) - _EPOCH) / _DAY
+    return index.map({lvl: i + 1 for i, lvl in enumerate(labels)}).astype(float)
+
+
+def _from_axis(value: float, model: SequentialCopulaModel) -> Any:
+    """Inverse van :func:`_to_axis` voor één gesamplede as-waarde."""
+    if model.index_kind == "numeric":
+        return value
+    if model.index_kind == "datetime":
+        ts = _EPOCH + value * _DAY
+        return ts.strftime(model.index_format) if model.index_format else ts
+    return model.index_levels[round(value) - 1]
 
 
 def _learn_terminal_states(
@@ -504,32 +554,31 @@ def _learn_terminal_states(
     return terminal
 
 
-def _to_wide(
-    df: pd.DataFrame,
-    seq_key: str,
-    seq_index: str,
-    feature_cols: list[str],
-    pos: dict,
-    max_len: int,
-) -> pd.DataFrame:
-    """long → wide: één rij per entiteit, kolommen ``feature__tN`` + ``__seq_len__``."""
-    records = []
-    for _, g in df.groupby(seq_key, sort=False):
-        g = g.sort_values(seq_index)
-        row: dict = {}
-        for _, r in g.iterrows():
-            t = pos[r[seq_index]]
-            for feat in feature_cols:
-                row[f"{feat}__t{t}"] = r[feat]
-        row[_SEQ_LEN_COL] = len(g)
-        records.append(row)
+def _to_wide(ordered: pd.DataFrame, seq_key: str, feature_cols: list[str]) -> pd.DataFrame:
+    """long → wide: één rij per entiteit met ``feature__tN``, ``__dt__tN``,
+    ``__seq_start__`` en ``__seq_len__``.
 
+    *ordered* is per entiteit op de tijd-as gesorteerd en heeft de hulpkolommen
+    ``__step__`` (relatieve stap), ``__dt__`` (afstand tot vorige stap) en ``__start__``.
+    """
+    long = ordered.set_index([seq_key, "__step__"])
+    wide_feat = long[feature_cols].unstack("__step__")
+    wide_feat.columns = [f"{feat}__t{t}" for feat, t in wide_feat.columns]
+    wide_dt = long["__dt__"].unstack("__step__").drop(columns=1)
+    wide_dt.columns = [f"{_DT_PREFIX}{t}" for t in wide_dt.columns]
+
+    max_len = int(ordered["__step__"].max())
     columns = [f"{feat}__t{t}" for t in range(1, max_len + 1) for feat in feature_cols]
-    wide = pd.DataFrame(records).reindex(columns=[*columns, _SEQ_LEN_COL])
+    columns += [f"{_DT_PREFIX}{t}" for t in range(2, max_len + 1)]
+    by_entity = ordered.groupby(seq_key, sort=False)
+    wide = pd.concat([wide_feat, wide_dt], axis=1)
+    wide[_SEQ_START_COL] = by_entity["__start__"].first()
+    wide[_SEQ_LEN_COL] = by_entity.size()
+    wide = wide.reindex(columns=[*columns, _SEQ_START_COL, _SEQ_LEN_COL]).reset_index(drop=True)
     # Numerieke features: forceer numeriek zodat SDV ze als 'numerical' detecteert
     # (de pivot met gemengde NaN maakt er anders object van).
     for feat in feature_cols:
-        if pd.api.types.is_numeric_dtype(df[feat]):
+        if pd.api.types.is_numeric_dtype(ordered[feat]):
             for t in range(1, max_len + 1):
                 wide[f"{feat}__t{t}"] = pd.to_numeric(wide[f"{feat}__t{t}"], errors="coerce")
     return wide
@@ -545,14 +594,34 @@ def fit_sequential(
     onderwijs-apparatuur zonder GPU.
     """
     feature_cols = [c for c in df.columns if c not in (seq_key, seq_index)]
-    index_levels = sorted(df[seq_index].dropna().unique().tolist())
-    pos = {lvl: i + 1 for i, lvl in enumerate(index_levels)}
-    max_len = len(index_levels)
+    df = df.dropna(subset=[seq_index])
+
+    n_dupes = int(df.duplicated([seq_key, seq_index]).sum())
+    if n_dupes:
+        raise ValueError(
+            f"De data bevat {n_dupes} keer meerdere rijen voor dezelfde entiteit op hetzelfde "
+            f"tijdstip ('{seq_key}' × '{seq_index}'). Kies een fijnere tijdkolom, of voeg "
+            "die rijen eerst samen tot één rij per entiteit per tijdstip."
+        )
+
+    kind, fmt = _detect_index_kind(df[seq_index])
+    labels = sorted(df[seq_index].unique().tolist()) if kind == "label" else []
+    axis = _to_axis(df[seq_index], kind, fmt, labels)
+    level_axis = sorted(axis.unique().tolist())
+    levels = df[seq_index].groupby(axis).first()  # één originele waarde per as-positie
+
+    ordered = df.assign(__axis__=axis).sort_values([seq_key, "__axis__"])
+    by_entity = ordered.groupby(seq_key, sort=False)
+    ordered["__step__"] = by_entity.cumcount() + 1
+    ordered["__dt__"] = by_entity["__axis__"].diff()
+    level_pos = {a: i + 1 for i, a in enumerate(level_axis)}
+    ordered["__start__"] = by_entity["__axis__"].transform("first").map(level_pos)
+    max_len = int(ordered["__step__"].max())
 
     # Generieke vormchecks: blokkeer alleen data die deze aanpak echt niet aankan,
     # ongeacht de dataset. (1) Zonder herhaalde entiteiten of tijdstappen is het
     # niet longitudinaal. (2) Wordt de wide-tabel breder dan het aantal entiteiten
-    # (features × tijdstappen ≥ entiteiten), dan is de correlatiematrix onderbepaald
+    # (features × stappen ≥ entiteiten), dan is de correlatiematrix onderbepaald
     # en levert de synthese onbetrouwbare verbanden — beter weigeren dan misleiden.
     n_entities = df[seq_key].nunique()
     if max_len < 2 or n_entities < 2:
@@ -572,7 +641,7 @@ def fit_sequential(
         )
 
     cat_cols = [c for c in feature_cols if not pd.api.types.is_numeric_dtype(df[c])]
-    terminal = _learn_terminal_states(df, seq_key, seq_index, cat_cols)
+    terminal = _learn_terminal_states(ordered, seq_key, "__axis__", cat_cols)
 
     fallback: dict[str, Any] = {}
     for feat in feature_cols:
@@ -584,7 +653,8 @@ def fit_sequential(
         else:
             fallback[feat] = col.mode().iloc[0]
 
-    wide = _to_wide(df, seq_key, seq_index, feature_cols, pos, max_len)
+    dts = ordered["__dt__"].dropna()
+    wide = _to_wide(ordered, seq_key, feature_cols)
     copula = fit(wide, seed=seed)
 
     return SequentialCopulaModel(
@@ -594,8 +664,15 @@ def fit_sequential(
         original_columns=list(df.columns),
         feature_cols=feature_cols,
         feature_dtypes={c: df[c].dtype for c in feature_cols},
-        index_levels=index_levels,
+        index_kind=kind,
+        index_format=fmt,
+        index_levels=[levels[a] for a in level_axis],
+        level_axis=level_axis,
         index_dtype=df[seq_index].dtype,
+        dt_mode=float(dts.mode().iloc[0]),
+        dt_min=float(dts.min()),
+        dt_max=float(dts.max()),
+        dt_integer=bool(np.allclose(dts, dts.round())),
         terminal=terminal,
         fallback=fallback,
         max_len=max_len,
@@ -626,7 +703,7 @@ def _coerce_like(s: pd.Series, dtype: Any) -> pd.Series:
 
 
 def _first_terminal_pos(row: pd.Series, model: SequentialCopulaModel) -> int | None:
-    """Eerste tijdstap (1-based) waarop een gesampelde staat terminaal is, of ``None``."""
+    """Eerste stap (1-based) waarop een gesampelde staat terminaal is, of ``None``."""
     for t in range(1, model.max_len + 1):
         for feat, terms in model.terminal.items():
             if not terms:
@@ -637,10 +714,19 @@ def _first_terminal_pos(row: pd.Series, model: SequentialCopulaModel) -> int | N
     return None
 
 
+def _resolve_step(raw: Any, model: SequentialCopulaModel) -> float:
+    """Gesamplede stapafstand, binnen het echte bereik; ontbreekt die, de meest voorkomende."""
+    dt = model.dt_mode if _is_missing(raw) else float(raw)
+    if model.dt_integer:
+        dt = round(dt)
+    return min(max(dt, model.dt_min), model.dt_max)
+
+
 def sample_sequential(model: SequentialCopulaModel, n_sequences: int) -> pd.DataFrame:
     """Genereer *n_sequences* synthetische reeksen, terug in het originele long-format."""
     synth_wide = sample(model.copula, n_sequences)
     rows: list[dict] = []
+    last_level = model.level_axis[-1]
 
     for new_id, (_, r) in enumerate(synth_wide.iterrows(), start=1):
         # Bepaal de reekslengte. Een eindstaat (gediplomeerd/uitgestroomd) is leidend:
@@ -654,12 +740,20 @@ def sample_sequential(model: SequentialCopulaModel, n_sequences: int) -> pd.Data
             k = model.max_len if _is_missing(raw_len) else int(round(float(raw_len)))
         k = max(1, min(k, model.max_len))
 
+        raw_start = r.get(_SEQ_START_COL)
+        start = 1 if _is_missing(raw_start) else int(round(float(raw_start)))
+        axis = model.level_axis[max(1, min(start, len(model.level_axis))) - 1]
+
         last: dict[str, Any] = {feat: None for feat in model.feature_cols}
         for t in range(1, k + 1):
-            record = {model.seq_key: new_id, model.seq_index: model.index_levels[t - 1]}
+            if t > 1:
+                axis += _resolve_step(r.get(f"{_DT_PREFIX}{t}"), model)
+                if axis > last_level:  # voorbij het laatste waargenomen tijdniveau
+                    break
+            record = {model.seq_key: new_id, model.seq_index: _from_axis(axis, model)}
             for feat in model.feature_cols:
                 val = r.get(f"{feat}__t{t}")
-                if _is_missing(val):  # gat → draag laatst bekende (of fallback) door
+                if _is_missing(val):  # ontbrekende waarde → draag laatst bekende (of fallback) door
                     val = last[feat] if not _is_missing(last[feat]) else model.fallback[feat]
                 last[feat] = val
                 record[feat] = val
