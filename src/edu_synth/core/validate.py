@@ -532,6 +532,16 @@ def evaluate_sdmetrics(
 #   - sequentielengte-verdeling: kloppen de lengtes van de sequenties?
 
 _AUTOCORR_OK = 0.2  # max. abs. verschil in gemiddelde lag-1 autocorrelatie
+_CONSISTENCY_OK = 0.1  # max. verschil in aandeel (echt vs. synthetisch) per consistentie-aspect
+_GAP_FACTOR = 1.5  # stap groter dan dit × de mediane echte stap telt als onderbreking
+_CONSISTENCY_LABELS = {
+    "duplicate": "Dubbele rijen per entiteit en tijdstip",
+    "gap": "Onderbrekingen in een reeks",
+    "after_terminal": "Rijen na een eindstaat",
+    "constant": "Vast kenmerk wisselt binnen een entiteit",
+    "counter": "Teller loopt niet door",
+    "first_only": "Eerste-rij-waarde op een latere rij",
+}
 
 
 @dataclass
@@ -539,17 +549,22 @@ class SequentialReport:
     """Temporele validatie voor longitudinale (sequentiële) data.
 
     ``length_*`` beschrijft de sequentielengte-verdeling; ``rows`` bevat per
-    tijdsafhankelijke kolom één verdict (overgangsmatrix of autocorrelatie).
+    tijdsafhankelijke kolom één verdict (overgangsmatrix of autocorrelatie);
+    ``consistency`` zet per aspect van de reeksopbouw het aandeel in echt en
+    synthetisch naast elkaar (zie :func:`evaluate_consistency`).
     """
 
     available: bool
     length_distance: float = 0.0  # genorm. Wasserstein tussen echte/synth. lengtes
     length_ok: bool = True
     rows: list[dict] = field(default_factory=list)  # {column, kind, distance, score, ok}
+    # {aspect, label, column, real, synth, score, ok}
+    consistency: list[dict] = field(default_factory=list)
     reason: str = ""
 
     def passed(self) -> bool:
-        return self.available and self.length_ok and all(r.get("ok", True) for r in self.rows)
+        checks = self.rows + self.consistency
+        return self.available and self.length_ok and all(r.get("ok", True) for r in checks)
 
 
 def _ordered_sequences(df: pd.DataFrame, seq_key: str, seq_index: str):
@@ -616,6 +631,95 @@ def _mean_autocorr(df: pd.DataFrame, seq_key, seq_index, col) -> float | None:
             if pd.notna(ac):
                 values.append(ac)
     return float(np.mean(values)) if values else None
+
+
+def _share(mask: pd.Series) -> float:
+    return float(mask.mean()) if len(mask) else 0.0
+
+
+def _consistency_shares(
+    df: pd.DataFrame, seq_key: str, axis_col: str, terminal: dict, patterns, gap_size: float
+) -> dict[tuple[str, str | None], float]:
+    """Aandeel afwijkingen per (aspect, kolom) in één dataset, op tijd gesorteerd."""
+    ordered = df.sort_values([seq_key, axis_col])
+    by_entity = ordered.groupby(seq_key, sort=False)
+    step = by_entity.cumcount()
+    has_prev = step > 0
+    dt = by_entity[axis_col].diff()
+
+    shares: dict[tuple[str, str | None], float] = {
+        ("duplicate", None): _share(ordered.duplicated([seq_key, axis_col])),
+        ("gap", None): _share(dt[has_prev] > gap_size),
+    }
+    after_terminal = pd.Series(False, index=ordered.index)
+    for col, values in terminal.items():
+        after_terminal |= by_entity[col].shift().isin(values)
+    shares[("after_terminal", None)] = _share(after_terminal)
+
+    multi = by_entity[seq_key].transform("size") > 1
+    for col in patterns.constant:
+        varies = by_entity[col].nunique(dropna=False) > 1
+        shares[("constant", col)] = _share(varies[by_entity.size() > 1]) if multi.any() else 0.0
+    for col, (kind, c) in patterns.counters.items():
+        diff = pd.to_numeric(ordered[col], errors="coerce").groupby(ordered[seq_key]).diff()
+        expected = c * (dt if kind == "time" else 1.0)
+        shares[("counter", col)] = _share(~np.isclose(diff, expected)[has_prev.to_numpy()])
+    for col, (first_values, _, _) in patterns.first_only.items():
+        shares[("first_only", col)] = _share(ordered.loc[has_prev, col].isin(first_values))
+    return shares
+
+
+def evaluate_consistency(
+    real: pd.DataFrame, synth: pd.DataFrame, seq_key: str, seq_index: str
+) -> list[dict]:
+    """Vergelijk de opbouw van de reeksen per entiteit tussen *real* en *synth*.
+
+    Per aspect staat het aandeel afwijkingen in echt en synthetisch naast elkaar:
+    dubbele combinaties van key en index, onderbrekingen, rijen na een eindstaat, en
+    schendingen van vaste patronen (constant per entiteit, teller, waarde alleen op
+    de eerste rij). Eindstaten en patronen worden uit de echte data geleerd met
+    dezelfde regels als de synthesizer. Niets wordt absoluut afgekeurd: dubbele
+    rijen of onderbrekingen kunnen in echte data legitiem zijn. Alleen een groot
+    verschil tussen echt en synthetisch zakt (``ok`` is False). Van de patronen
+    wordt per aspect de kolom met het grootste verschil gerapporteerd.
+    """
+    from edu_synth.core.synthesize import (
+        detect_sequence_patterns,
+        detect_terminal_states,
+        to_time_axis,
+    )
+
+    axis_col = "__axis__"
+    columns = [c for c in real.columns if c in synth.columns and c not in (seq_key, seq_index)]
+    real = real.dropna(subset=[seq_index])
+    real = real.assign(**{axis_col: to_time_axis(real[seq_index], real[seq_index])})
+    synth = synth.assign(**{axis_col: to_time_axis(synth[seq_index], real[seq_index])})
+
+    terminal = detect_terminal_states(real, seq_key, axis_col, columns)
+    # De patronen zijn alleen betekenisvol op unieke (key, index)-combinaties.
+    unique_real = real.drop_duplicates([seq_key, axis_col])
+    patterns = detect_sequence_patterns(unique_real, seq_key, axis_col, columns)
+    real_steps = unique_real.sort_values([seq_key, axis_col]).groupby(seq_key)[axis_col].diff()
+    gap_size = _GAP_FACTOR * float(real_steps.median()) if real_steps.notna().any() else np.inf
+
+    real_shares = _consistency_shares(real, seq_key, axis_col, terminal, patterns, gap_size)
+    synth_shares = _consistency_shares(synth, seq_key, axis_col, terminal, patterns, gap_size)
+
+    worst: dict[str, dict] = {}
+    for (aspect, col), real_share in real_shares.items():
+        synth_share = synth_shares[(aspect, col)]
+        score = abs(real_share - synth_share)
+        if aspect not in worst or score > worst[aspect]["score"]:
+            worst[aspect] = {
+                "aspect": aspect,
+                "label": _CONSISTENCY_LABELS[aspect],
+                "column": col,
+                "real": round(real_share, 4),
+                "synth": round(synth_share, 4),
+                "score": round(score, 4),
+                "ok": score < _CONSISTENCY_OK,
+            }
+    return list(worst.values())
 
 
 def evaluate_sequential(
@@ -697,6 +801,7 @@ def evaluate_sequential(
         length_distance=round(length_distance, 4),
         length_ok=length_distance < _SCORE_OK,
         rows=rows,
+        consistency=evaluate_consistency(real, synth, seq_key, seq_index),
     )
 
 
@@ -773,9 +878,10 @@ def sequential_verdict(seq: SequentialReport) -> tuple[str, str]:
     """
     if not seq.available:
         return "Niet berekend", "onbekend"
-    max_score = max([r["score"] for r in seq.rows] + [seq.length_distance])
-    n_failed = sum(1 for r in seq.rows if not r.get("ok", True)) + (0 if seq.length_ok else 1)
-    return score_verdict(max_score, n_failed, len(seq.rows) + 1)  # +1 voor de lengte-verdeling
+    checks = seq.rows + seq.consistency
+    max_score = max([r["score"] for r in checks] + [seq.length_distance])
+    n_failed = sum(1 for r in checks if not r.get("ok", True)) + (0 if seq.length_ok else 1)
+    return score_verdict(max_score, n_failed, len(checks) + 1)  # +1 voor de lengte-verdeling
 
 
 def worst_sequential_component(seq: SequentialReport) -> dict | None:
@@ -788,21 +894,39 @@ def worst_sequential_component(seq: SequentialReport) -> dict | None:
     alles binnen de grens blijft of er niets te meten viel.
 
     Retour: ``{"kind", "column", "score", "threshold"}`` — ``column`` is ``None`` voor
-    de sequentielengte.
+    de sequentielengte. Een consistentie-aspect heeft ``kind`` ``consistency`` en een
+    ``label``.
     """
     if not seq.available:
         return None
     failing = [
-        {"kind": r["kind"], "column": r["column"], "score": r["score"]}
+        {"kind": r["kind"], "column": r["column"], "score": r["score"], "threshold": _SCORE_OK}
         for r in seq.rows
         if not r.get("ok", True)
     ]
+    failing += [
+        {
+            "kind": "consistency",
+            "label": r["label"],
+            "column": r["column"],
+            "score": r["score"],
+            "threshold": _CONSISTENCY_OK,
+        }
+        for r in seq.consistency
+        if not r.get("ok", True)
+    ]
     if not seq.length_ok:
-        failing.append({"kind": "length", "column": None, "score": seq.length_distance})
+        failing.append(
+            {
+                "kind": "length",
+                "column": None,
+                "score": seq.length_distance,
+                "threshold": _SCORE_OK,
+            }
+        )
     if not failing:
         return None
-    worst = max(failing, key=lambda c: c["score"])
-    return {**worst, "threshold": _SCORE_OK}
+    return max(failing, key=lambda c: c["score"])
 
 
 def sequential_recommendation(seq: SequentialReport) -> str:
@@ -924,6 +1048,7 @@ def _temporal_advice(seq: SequentialReport | None, synthesizer: str | None) -> l
         "transition": "de doorstroomkansen tussen statussen",
         "autocorrelation": "de samenhang tussen tijdstappen",
         "length": "de trajectlengtes",
+        "consistency": "de opbouw van de reeksen per entiteit",
     }.get(driver["kind"], "het tijdsgedrag")
     if synthesizer == "par":
         kern = (
@@ -1109,6 +1234,7 @@ def build_validation_report(
                     "length_distance": seq.length_distance,
                     "length_ok": seq.length_ok,
                     "columns": [dict(row) for row in seq.rows],
+                    "consistency": [dict(row) for row in seq.consistency],
                     "passed": seq.passed(),
                 }
             )
