@@ -26,6 +26,7 @@ _RISK_COLOR = {
     "onbekend": colors.HexColor("#616161"),
 }
 _HEADER_BG = colors.HexColor("#f0f2f6")
+_MAX_PAIR_ROWS = 10  # een rapport met alle kolomparen wordt onleesbaar; toon de zwakste
 
 
 def _table(data: list[list], styles: dict, col_widths=None) -> Table:
@@ -100,6 +101,7 @@ def build_report_pdf(report: dict, verdict: dict | None = None) -> bytes:
     story.append(Spacer(1, 5 * mm))
 
     story += _column_stats_section(report, styles)
+    story += _correlations_section(report, styles)
     story += _temporal_section(report, styles)
     story += _privacy_section(report, styles)
     story += _params_section(report, styles)
@@ -126,6 +128,84 @@ def _column_stats_section(report: dict, styles: dict) -> list:
         for r in stats
     ]
     return _section("Verdeling per kolom", rows, styles)
+
+
+def _correlations_section(report: dict, styles: dict) -> list:
+    """Samenhang tussen kolommen: afwijkende correlaties plus de sdmetrics-kolomparen.
+
+    De sdmetrics-paren dekken ook categorisch × categorisch en categorisch ×
+    numeriek, zodat de sectie voor elke kolomsoort iets laat zien.
+    """
+    corr = report.get("correlations")
+    pair_trends = (report.get("sdmetrics") or {}).get("column_pair_trends") or []
+    if corr is None and not pair_trends:
+        return []
+    story = [Paragraph("Samenhang tussen kolommen", styles["h2"])]
+    if corr and corr.get("note"):
+        story.append(Paragraph(corr["note"], styles["small"]))
+
+    if corr and not corr.get("available"):
+        story.append(
+            Paragraph(
+                f"Correlaties tussen numerieke kolommen niet berekend: {corr.get('reason', '—')}.",
+                styles["body"],
+            )
+        )
+    elif corr:
+        flagged = corr.get("flagged") or []
+        threshold = _fmt(corr.get("threshold"))
+        if not flagged:
+            story.append(
+                Paragraph(
+                    "Alle correlaties tussen numerieke kolommen zijn bewaard "
+                    f"(verschil ≤ {threshold}).",
+                    styles["body"],
+                )
+            )
+        else:
+            story.append(
+                Paragraph(
+                    f"{len(flagged)} correlatie(s) tussen numerieke kolommen wijken meer dan "
+                    f"{threshold} af.",
+                    styles["body"],
+                )
+            )
+            rows = [["Kolom A", "Kolom B", "Echt", "Synthetisch", "Verschil"]]
+            rows += [
+                [
+                    r.get("col_a", "—"),
+                    r.get("col_b", "—"),
+                    _fmt(r.get("real_corr")),
+                    _fmt(r.get("synth_corr")),
+                    _fmt(r.get("delta")),
+                ]
+                for r in flagged
+            ]
+            story.append(_table(rows, styles))
+
+    if pair_trends:
+        weakest = sorted(pair_trends, key=lambda r: r.get("Score", 1.0))[:_MAX_PAIR_ROWS]
+        story.append(Spacer(1, 3 * mm))
+        story.append(
+            Paragraph(
+                f"Kolomparen volgens sdmetrics (1 = verband volledig bewaard): de {len(weakest)} "
+                f"zwakste van {len(pair_trends)}. Dit dekt ook tekstkolommen.",
+                styles["body"],
+            )
+        )
+        rows = [["Kolom A", "Kolom B", "Metriek", "Score"]]
+        rows += [
+            [
+                r.get("Column 1", "—"),
+                r.get("Column 2", "—"),
+                r.get("Metric", "—"),
+                _fmt(r.get("Score")),
+            ]
+            for r in weakest
+        ]
+        story.append(_table(rows, styles))
+    story.append(Spacer(1, 5 * mm))
+    return story
 
 
 def _temporal_section(report: dict, styles: dict) -> list:

@@ -1,6 +1,9 @@
 """Tests voor report_pdf.py — PDF-export van het validatierapport."""
 
-from edu_synth.core.report_pdf import build_report_pdf
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Paragraph
+
+from edu_synth.core.report_pdf import _correlations_section, build_report_pdf
 
 _REPORT = {
     "generated_at": "2026-07-09",
@@ -70,3 +73,46 @@ def test_build_report_pdf_minimal_report():
     # Alleen de verplichte velden — geen privacy/temporal/stats.
     pdf = build_report_pdf({"generated_at": "2026-07-09", "synthesizer": "gaussian"})
     assert pdf.startswith(b"%PDF-")
+
+
+def _section_text(report: dict) -> str:
+    """Alle alineatekst van de sectie 'Samenhang tussen kolommen'."""
+    styles = {k: getSampleStyleSheet()["BodyText"] for k in ("h2", "body", "cell", "small")}
+    story = _correlations_section(report, styles)
+    return " ".join(p.getPlainText() for p in story if isinstance(p, Paragraph))
+
+
+_PAIR = {"col_a": "ec", "col_b": "leeftijd", "real_corr": 0.6, "synth_corr": 0.1, "delta": 0.5}
+_PAIR_TREND = {"Column 1": "status", "Column 2": "vorm", "Metric": "Contingency", "Score": 0.4}
+
+
+def test_correlations_section_lists_flagged_pairs():
+    report = {"correlations": {"available": True, "threshold": 0.1, "flagged": [_PAIR]}}
+    text = _section_text(report)
+    assert "Samenhang tussen kolommen" in text
+    assert "1 correlatie(s)" in text
+    assert build_report_pdf(report).startswith(b"%PDF-")
+
+
+def test_correlations_section_longitudinal_note():
+    note = "Deze correlaties gaan over de losse rijen."
+    report = {"correlations": {"available": True, "threshold": 0.1, "flagged": [], "note": note}}
+    text = _section_text(report)
+    assert note in text
+    assert "zijn bewaard" in text
+
+
+def test_correlations_section_without_numeric_columns_shows_pair_trends():
+    # Geen numerieke kolommen: de reden staat erin en de sdmetrics-paren vullen de sectie.
+    report = {
+        "correlations": {"available": False, "reason": "Minder dan 2 numerieke kolommen"},
+        "sdmetrics": {"available": True, "column_pair_trends": [_PAIR_TREND]},
+    }
+    text = _section_text(report)
+    assert "Minder dan 2 numerieke kolommen" in text
+    assert "zwakste van 1" in text
+    assert build_report_pdf(report).startswith(b"%PDF-")
+
+
+def test_correlations_section_absent_without_data():
+    assert _correlations_section({"generated_at": "2026-07-09"}, {}) == []

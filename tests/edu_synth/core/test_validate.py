@@ -1076,6 +1076,52 @@ def test_build_validation_report_includes_temporal_section():
     assert {c["aspect"] for c in out["temporal"]["consistency"]} >= {"duplicate", "gap"}
 
 
+def _report_with_pairs(real: pd.DataFrame, synth: pd.DataFrame, seq=None) -> dict:
+    report = evaluate(real, synth)
+    priv = evaluate_privacy(real, synth)
+    return build_validation_report(
+        report=report,
+        priv=priv,
+        sdm=evaluate_sdmetrics(real, synth, _metadata(real)),
+        recommendation=usage_recommendation(report, priv),
+        synthesizer="gaussian_copula",
+        n_training_rows=len(real),
+        n_generated_rows=len(synth),
+        sdv_version="1.37.0",
+        generated_at="2026-10-05",
+        seq=seq,
+        pairs=evaluate_pairs(real, synth),
+    )
+
+
+def test_build_validation_report_includes_correlations_tabular():
+    rng = np.random.default_rng(0)
+    a = rng.normal(size=200)
+    real = pd.DataFrame({"a": a, "b": a + rng.normal(scale=0.1, size=200)})
+    synth = pd.DataFrame({"a": a, "b": rng.normal(size=200)})  # verband verdwenen
+    corr = _report_with_pairs(real, synth)["correlations"]
+    assert corr["available"] is True
+    assert corr["flagged"][0]["col_a"] == "a"
+    assert "note" not in corr
+
+
+# De autocorrelatie op reeksen van één rij geeft numpy-ruis.
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
+def test_build_validation_report_correlations_note_for_longitudinal():
+    real = pd.read_csv(_FIXTURES / "long_jaar_gespreid.csv")
+    seq = evaluate_sequential(real, real.copy(), "student_id", "jaar")
+    corr = _report_with_pairs(real, real.copy(), seq=seq)["correlations"]
+    assert corr["available"] is True
+    assert "rijen" in corr["note"]
+
+
+def test_build_validation_report_correlations_without_numeric_columns():
+    real = pd.DataFrame({"x": ["a", "b"] * 50, "y": ["p", "q", "r", "s"] * 25})
+    corr = _report_with_pairs(real, real.copy())["correlations"]
+    assert corr["available"] is False
+    assert corr["reason"]
+
+
 def test_build_validation_report_omits_temporal_when_no_seq():
     df = _make_df()
     report = evaluate(df, df.copy())

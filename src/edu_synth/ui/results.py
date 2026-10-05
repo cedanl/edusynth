@@ -225,6 +225,7 @@ def _assemble_validation_report(
     n_generated: int,
     random_seed: int | None,
     seq: SequentialReport | None,
+    pairs: PairsReport,
 ) -> dict:
     """Bouw de rapport-dict die zowel de JSON- als de PDF-export voedt (één bron)."""
     import sdv as _sdv
@@ -242,6 +243,7 @@ def _assemble_validation_report(
         random_seed=random_seed,
         intended_use=st.session_state.get("intended_use"),
         seq=seq,
+        pairs=pairs,
     )
 
 
@@ -321,7 +323,16 @@ def render(
     # direct bij het oordeel zodat je het resultaat (oordeel, aanbeveling, scores) meteen
     # kunt meenemen zonder naar de Download-tab te hoeven.
     validation_report = _assemble_validation_report(
-        report, priv, sdm, recommendation, synth_name, len(df), n_generated, random_seed, seq
+        report,
+        priv,
+        sdm,
+        recommendation,
+        synth_name,
+        len(df),
+        n_generated,
+        random_seed,
+        seq,
+        pairs,
     )
     pdf_bytes = build_report_pdf(validation_report, verdict)
     _render_pdf_download(pdf_bytes, key="pdf_banner")
