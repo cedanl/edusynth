@@ -1,7 +1,10 @@
 """Tests voor validate.py — Report, afstandsmetrieken en privacyvalidatie."""
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+import pytest
 
 from edu_synth.core.validate import (
     RECOMMENDATION_DISCLAIMER,
@@ -16,6 +19,7 @@ from edu_synth.core.validate import (
     build_validation_report,
     correlation_risk,
     evaluate,
+    evaluate_consistency,
     evaluate_pairs,
     evaluate_privacy,
     evaluate_sdmetrics,
@@ -915,6 +919,72 @@ def test_sequential_recommendation_unavailable_flags_not_assessed():
     assert "niet beoordeeld" in text.lower()
 
 
+# Vier vormen longitudinale data: gespreide instroom, onderbrekingen, onregelmatige
+# datum-index en een tijdlabel als tekst.
+_FIXTURES = Path(__file__).parent.parent.parent / "fixtures"
+_LONGITUDINAL_FIXTURES = {
+    "long_jaar_gespreid.csv": "jaar",
+    "long_onderbreking.csv": "jaar",
+    "long_datum.csv": "peildatum",
+    "long_label.csv": "studiejaar",
+}
+
+
+@pytest.mark.parametrize(("fixture", "idx"), _LONGITUDINAL_FIXTURES.items())
+def test_consistency_passes_for_sequential_synthesis(fixture, idx):
+    from edu_synth.core.synthesize import fit_sequential, sample_sequential
+
+    real = pd.read_csv(_FIXTURES / fixture)
+    model = fit_sequential(real, "student_id", idx, seed=0)
+    synth = sample_sequential(model, real["student_id"].nunique())
+    rows = evaluate_consistency(real, synth, "student_id", idx)
+    assert {r["aspect"] for r in rows} == {
+        "duplicate",
+        "gap",
+        "after_terminal",
+        "constant",
+        "counter",
+        "first_only",
+    }
+    assert all(r["ok"] for r in rows)
+
+
+# De autocorrelatie op reeksen van één rij (tabulaire synthese) geeft numpy-ruis.
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
+@pytest.mark.parametrize(("fixture", "idx"), _LONGITUDINAL_FIXTURES.items())
+def test_consistency_flags_tabular_synthesis_on_longitudinal_data(fixture, idx):
+    from edu_synth.core.synthesize import fit, sample
+
+    real = pd.read_csv(_FIXTURES / fixture)
+    synth = sample(fit(real, seed=0), len(real))
+    seq = evaluate_sequential(real, synth, "student_id", idx)
+    failed = {r["aspect"] for r in seq.consistency if not r["ok"]}
+    assert {"after_terminal", "constant", "counter", "first_only"} <= failed
+    assert not seq.passed()
+    assert sequential_verdict(seq)[1] != "laag"
+
+
+def test_consistency_does_not_reject_real_gaps_and_duplicates():
+    # Onderbrekingen en dubbele rijen in echte data zijn geen fout: gelijk aandeel → ok.
+    real = pd.read_csv(_FIXTURES / "long_onderbreking.csv")
+    real = pd.concat([real, real.head(20)], ignore_index=True)
+    rows = {r["aspect"]: r for r in evaluate_consistency(real, real.copy(), "student_id", "jaar")}
+    assert rows["gap"]["real"] > 0 and rows["duplicate"]["real"] > 0
+    assert all(r["ok"] for r in rows.values())
+
+
+def test_worst_sequential_component_reports_failing_consistency():
+    report = SequentialReport(
+        available=True,
+        consistency=[
+            {"aspect": "gap", "label": "x", "column": None, "score": 0.4, "ok": False},
+        ],
+    )
+    worst = worst_sequential_component(report)
+    assert worst["kind"] == "consistency"
+    assert worst["label"] == "x"
+
+
 def test_worst_sequential_component_none_when_all_within_threshold():
     report = SequentialReport(
         available=True,
@@ -1003,6 +1073,7 @@ def test_build_validation_report_includes_temporal_section():
     assert out["temporal"]["available"] is True
     assert "length_distance" in out["temporal"]
     assert out["temporal"]["passed"] is True
+    assert {c["aspect"] for c in out["temporal"]["consistency"]} >= {"duplicate", "gap"}
 
 
 def test_build_validation_report_omits_temporal_when_no_seq():

@@ -562,8 +562,12 @@ def _render_sequential_detail(seq: SequentialReport) -> None:
             "transition": "overgangsmatrix",
             "autocorrelation": "autocorrelatie",
             "length": "sequentielengte",
+            "consistency": "opbouw van de reeksen",
         }.get(driver["kind"], driver["kind"])
-        where = f"kolom `{driver['column']}`" if driver["column"] else "de trajectlengtes"
+        if driver["kind"] == "consistency":
+            where = driver["label"].lower()
+        else:
+            where = f"kolom `{driver['column']}`" if driver["column"] else "de trajectlengtes"
         st.warning(
             f"⚠️ Grootste afwijking: {where} ({kind_nl}) — score {driver['score']:.2f}, "
             f"boven de grens {driver['threshold']:.1f}. Dit drijft het tijdsgedrag-oordeel."
@@ -582,6 +586,26 @@ def _render_sequential_detail(seq: SequentialReport) -> None:
             }
         )
         st.dataframe(rdf, use_container_width=True)
+
+    if seq.consistency:
+        st.markdown("**Opbouw van de reeksen** (per entiteit)")
+        cdf = pd.DataFrame(seq.consistency)
+        cdf = pd.DataFrame(
+            {
+                "Aspect": cdf["label"],
+                "Kolom": cdf["column"].fillna("—"),
+                "Echt": cdf["real"].map("{:.1%}".format),
+                "Synthetisch": cdf["synth"].map("{:.1%}".format),
+                "OK": cdf["ok"].map({True: "✓", False: "✗"}),
+            }
+        )
+        st.dataframe(cdf, use_container_width=True, hide_index=True)
+        st.caption(
+            "Aandeel rijen, stappen of entiteiten waarvoor het aspect geldt, in echte en "
+            "synthetische data. Dubbele rijen en onderbrekingen kunnen in echte data "
+            "voorkomen; alleen een verschil van meer dan 10 procentpunt is gemarkeerd. "
+            "Eindstaten en vaste patronen zijn uit de echte data afgeleid."
+        )
 
     st.caption(
         "**Overgangsmatrix** (categorisch) = hoeveel de doorstroomkansen tussen statussen "

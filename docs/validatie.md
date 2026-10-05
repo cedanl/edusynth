@@ -77,6 +77,25 @@ Longitudinale data heeft meerdere rijen per entiteit (bijvoorbeeld één rij per
 
 De overgangsmatrix-afstand is een TV-afstand per bronstaat, gewogen naar hoe vaak die bronstaat in de echte data voorkomt — een veelvoorkomende overgang telt zwaarder dan een zeldzame. De sequentielengte-verdeling wordt vergeleken met de genormaliseerde Wasserstein-afstand, net als numerieke kolommen. Id-kolommen, de sequentie-key en de tijd-index zelf blijven buiten beschouwing.
 
+### Opbouw van de reeksen
+
+De signalen hierboven meten of het gedrag over de tijd lijkt. Ze laten niet zien of een reeks per entiteit logisch is opgebouwd. Daarvoor zet de consistentiecheck per aspect het aandeel in echte en synthetische data naast elkaar:
+
+| Aspect | Wat het telt |
+|---|---|
+| **Dubbele rijen** | Rijen met dezelfde entiteit en hetzelfde tijdstip als een eerdere rij |
+| **Onderbrekingen** | Stappen die groter zijn dan anderhalf keer de gebruikelijke stap in de echte data |
+| **Rijen na een eindstaat** | Rijen die volgen op een waarde die in de echte data een reeks beëindigt |
+| **Vast kenmerk wisselt** | Entiteiten waarbij een kolom die per entiteit gelijk hoort te zijn, wisselt |
+| **Teller loopt niet door** | Stappen waarbij een oplopende teller niet met de vaste waarde stijgt |
+| **Eerste-rij-waarde later** | Latere rijen met een waarde die alleen op de eerste rij hoort |
+
+Eindstaten en vaste patronen worden uit de echte data afgeleid, met dezelfde regels als de synthesizer gebruikt (zie [Methodologie](methodologie/index.md)). Bij de laatste drie aspecten staat de kolom met het grootste verschil in de tabel.
+
+De check keurt niets absoluut af. Dubbele rijen en onderbrekingen kunnen in echte data voorkomen. Een aspect is gemarkeerd als het aandeel in synthetisch meer dan 10 procentpunt afwijkt van echt. Een gemarkeerd aspect telt mee in het oordeel Tijdsgedrag. Tabulaire synthese op longitudinale data valt hier direct op: die levert dubbele rijen, rijen na een eindstaat en wisselende vaste kenmerken.
+
+De tabel staat in de app onder het temporele detail, in `validation_report.json` onder `temporal.consistency` en in de PDF bij Tijdsgedrag.
+
 Bij longitudinale synthese toont de app deze signalen als scorecard **Tijdsgedrag** met een gewone-taal-oordeel, op dezelfde plek waar tabulaire data de scorecard Samenhang krijgt. Het tijdsgedrag telt mee in het overall bruikbaarheidsoordeel, en de temporele scores komen mee in de `validation_report.json`-export onder `temporal`. De tabulaire samenhang-sectie (correlaties over de platgeslagen kolommen) wordt bij longitudinale data weggeklapt — die is grotendeels ruis naast de temporele metrieken.
 
 Naast de scores toont de tab _Distributies_ bij longitudinale data een **Tijd**-sectie met de metriek als beeld, echt vs. synthetisch:

@@ -27,6 +27,17 @@ _REPORT = {
         "length_distance": 0.1,
         "length_ok": True,
         "columns": [{"column": "status", "kind": "transition", "score": 0.3, "ok": False}],
+        "consistency": [
+            {
+                "aspect": "duplicate",
+                "label": "Dubbele rijen per entiteit en tijdstip",
+                "column": None,
+                "real": 0.0,
+                "synth": 0.25,
+                "score": 0.25,
+                "ok": False,
+            }
+        ],
     },
 }
 

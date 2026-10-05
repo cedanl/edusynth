@@ -473,7 +473,7 @@ _CHANCE_LEVEL = 0.01
 _SEQ_START_COL = "__seq_start__"
 _DT_PREFIX = "__dt__t"
 _AXIS_COL = "__axis__"
-_DAY = pd.Timedelta(days=1)
+_DAY = pd.Timedelta(1, unit="D")
 _EPOCH = pd.Timestamp(0)
 
 
@@ -524,6 +524,17 @@ def _to_axis(index: pd.Series, kind: str, fmt: str | None, labels: list) -> pd.S
     if kind == "datetime":
         return (pd.to_datetime(index, format=fmt) - _EPOCH) / _DAY
     return index.map({lvl: i + 1 for i, lvl in enumerate(labels)}).astype(float)
+
+
+def to_time_axis(index: pd.Series, like: pd.Series) -> pd.Series:
+    """Zet *index* op de numerieke tijd-as die bij de tijdkolom *like* hoort.
+
+    Soort, datumformaat en labelvolgorde komen uit *like* (de echte data), zodat
+    echte en synthetische tijdkolommen op dezelfde as vergelijkbaar zijn.
+    """
+    kind, fmt = _detect_index_kind(like)
+    labels = sorted(like.dropna().unique().tolist()) if kind == "label" else []
+    return _to_axis(index, kind, fmt, labels)
 
 
 def _from_axis(value: float, model: SequentialCopulaModel) -> Any:

@@ -153,6 +153,28 @@ def _temporal_section(report: dict, styles: dict) -> list:
             for r in cols
         ]
         story.append(_table(rows, styles))
+    consistency = temporal.get("consistency") or []
+    if consistency:
+        story.append(Spacer(1, 3 * mm))
+        story.append(
+            Paragraph(
+                "Opbouw van de reeksen: aandeel per aspect in echte en synthetische data. "
+                "Een groot verschil is gemarkeerd.",
+                styles["body"],
+            )
+        )
+        rows = [["Aspect", "Kolom", "Echt", "Synthetisch", "OK"]]
+        rows += [
+            [
+                r.get("label", "—"),
+                r.get("column") or "—",
+                f"{r.get('real', 0):.1%}",
+                f"{r.get('synth', 0):.1%}",
+                _ok_symbol(r.get("ok")),
+            ]
+            for r in consistency
+        ]
+        story.append(_table(rows, styles))
     story.append(Spacer(1, 5 * mm))
     return story
 
