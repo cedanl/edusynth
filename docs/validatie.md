@@ -137,6 +137,7 @@ In de tab _Download & Reproductie_ staat naast de CSV een knop **Download valida
 - `generated_at`, `sdv_version`, `synthesizer`, `n_training_rows`, `n_generated_rows`, `random_seed`, `intended_use`
 - `column_stats` — per kolom de afstand, score, metriek en of die binnen de drempel valt
 - `sdmetrics` — overall score, Column Shapes en Column Pair Trends (indien beschikbaar)
+- `correlations` — de kolomparen waarvan de correlatie meer dan `0.1` afwijkt (echt, synthetisch, verschil), of de reden als de controle niet berekenbaar is. Bij longitudinale data staat erbij dat de correlaties over de losse rijen gaan
 - `privacy` — DCR-ratio, NNDR-mediaan en risiconiveau (indien beschikbaar)
 - `usage_recommendation` en de bijbehorende disclaimer
 
@@ -144,7 +145,7 @@ Zo leg je het volledige oordeel reproduceerbaar vast.
 
 ## Validatierapport exporteren (PDF)
 
-Naast de JSON staat in dezelfde tab een knop **Download rapport (PDF)**. Het PDF is een leesbaar rapport om te delen of archiveren en bevat het oordeel, de scorekaarten, de verdeling per kolom, het tijdsgedrag-detail (bij longitudinale data), de privacymaten en de reproductie-parameters. Het PDF put uit dezelfde bron als de JSON, dus beide blijven consistent.
+Naast de JSON staat in dezelfde tab een knop **Download rapport (PDF)**. Het PDF is een leesbaar rapport om te delen of archiveren en bevat het oordeel, de scorekaarten, de verdeling per kolom, de samenhang tussen kolommen (afwijkende correlaties en de tien zwakste kolomparen volgens sdmetrics, ook voor tekstkolommen), het tijdsgedrag-detail (bij longitudinale data), de privacymaten en de reproductie-parameters. Het PDF put uit dezelfde bron als de JSON, dus beide blijven consistent.
 
 Het PDF wordt headless gegenereerd met [reportlab](https://www.reportlab.com/) — pure Python, zonder systeemafhankelijkheden, dus het werkt ook bij een lokale `pip install` op Windows en macOS.
 

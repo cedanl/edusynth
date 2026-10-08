@@ -359,6 +359,13 @@ def evaluate_privacy(
 # ── Bivariate correlatierapport ────────────────────────────────────────────────
 
 
+_PAIR_DELTA_OK = 0.1  # max. verschil in Pearson-correlatie (echt vs. synthetisch)
+_PAIRS_LONGITUDINAL_NOTE = (
+    "Deze correlaties gaan over de losse rijen, niet over het verloop per entiteit. "
+    "Voor longitudinale data zijn de temporele metrieken leidend."
+)
+
+
 @dataclass
 class PairsReport:
     available: bool
@@ -388,7 +395,7 @@ def evaluate_pairs(real: pd.DataFrame, synth: pd.DataFrame) -> PairsReport:
             if pd.isna(rc) or pd.isna(sc):
                 continue
             delta = abs(rc - sc)
-            if delta > 0.1:
+            if delta > _PAIR_DELTA_OK:
                 flagged.append(
                     {
                         "col_a": c1,
@@ -1178,13 +1185,15 @@ def build_validation_report(
     random_seed: int | None = None,
     intended_use: str | None = None,
     seq: SequentialReport | None = None,
+    pairs: PairsReport | None = None,
 ) -> dict:
     """Stel een machine-leesbaar validatierapport samen voor latere verantwoording.
 
     Bundelt alle scores die anders alleen in de UI zichtbaar zijn (per-kolom
     afstanden, sdmetrics, DCR/NNDR) plus de synthese-parameters, zodat een
     download het hele oordeel reproduceerbaar vastlegt. *seq* voegt bij
-    longitudinale synthese de temporele metrieken toe.
+    longitudinale synthese de temporele metrieken toe, *pairs* het correlatiebehoud
+    tussen numerieke kolommen.
     """
     privacy = {"available": priv.available}
     if priv.available:
@@ -1225,6 +1234,16 @@ def build_validation_report(
         "usage_recommendation": recommendation,
         "disclaimer": RECOMMENDATION_DISCLAIMER,
     }
+
+    if pairs is not None:
+        correlations: dict = {"available": pairs.available, "threshold": _PAIR_DELTA_OK}
+        if pairs.available:
+            correlations["flagged"] = [dict(row) for row in pairs.flagged]
+        else:
+            correlations["reason"] = pairs.reason
+        if seq is not None:
+            correlations["note"] = _PAIRS_LONGITUDINAL_NOTE
+        result["correlations"] = correlations
 
     if seq is not None:
         temporal: dict = {"available": seq.available}
