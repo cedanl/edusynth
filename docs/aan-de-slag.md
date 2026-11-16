@@ -2,15 +2,11 @@
 
 ## Installatie
 
-```bash
-pip install edu-synth
-```
-
-Of lokaal vanuit de broncode:
+Vereist [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/cedanl/edusynth
-cd edu-synth
+cd edusynth
 uv sync
 uv run edu-synth app
 ```
@@ -23,7 +19,7 @@ De app leidt je in drie stappen door de flow: **Data laden → Genereren → Res
 
 ### Stap 1 — Data uploaden
 
-Start de app. Vink eerst de toestemming aan dat je deze data mag verwerken — het uploadveld wordt pas daarna actief. Verwerking vindt volledig lokaal in je browser-sessie plaats; data wordt nergens opgeslagen of verzonden. Sleep daarna een CSV- of Parquet-bestand op het uploadveld. edu-synth toont een preview van de eerste rijen en detecteert automatisch kolomtypes.
+Start de app. Vink eerst de toestemming aan dat je deze data mag verwerken — het uploadveld wordt pas daarna actief. Verwerking vindt plaats op de computer waar de app draait. Je data wordt niet naar een externe dienst verzonden en niet door de app opgeslagen. Sleep daarna een CSV- of Parquet-bestand op het uploadveld. edu-synth toont een preview van de eerste rijen en detecteert automatisch kolomtypes.
 
 !!! tip "Geschikte data"
     De app werkt het best met tabellen van minimaal 500 rijen. Kleinere datasets leveren minder stabiele correlatieramingen op.

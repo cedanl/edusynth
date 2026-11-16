@@ -75,8 +75,8 @@ def render() -> DataSource | None:
 
     if source == "Upload bestand":
         st.info(
-            "🔒 Verwerking vindt volledig lokaal in je browser-sessie plaats. "
-            "Je data wordt nergens opgeslagen of verzonden."
+            "🔒 Verwerking vindt plaats op de computer waar de app draait. Je data "
+            "wordt niet naar een externe dienst verzonden en niet door de app opgeslagen."
         )
         consent = st.checkbox(
             "Ik bevestig dat ik toestemming heb om deze data te verwerken "

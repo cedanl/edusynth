@@ -13,9 +13,13 @@ Upload je dataset, genereer een synthetische versie en bekijk direct of de stati
 
 ## Starten
 
+Vereist [uv](https://docs.astral.sh/uv/).
+
 ```bash
-pip install edu-synth
-edu-synth app
+git clone https://github.com/cedanl/edusynth
+cd edusynth
+uv sync
+uv run edu-synth app
 ```
 
 De browser opent automatisch op `http://localhost:8501`.
