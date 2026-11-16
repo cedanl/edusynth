@@ -176,7 +176,7 @@ De **NNDR** (Nearest Neighbor Distance Ratio) staat ernaast als aanvullend signa
 
 Zowel numerieke als categorische kolommen worden meegenomen. In onderwijsdata zijn de quasi-identifiers (`geslacht`, `instellingscode`, `opleidingscode`, `woonplaats`) juist categorisch — die mogen niet ontbreken in de berekening. Numerieke kolommen worden geschaald, categorische worden one-hot gecodeerd.
 
-Kolommen met heel veel unieke waarden (vrije tekst, namen, identifiers) worden uitgesloten en de app waarschuwt erover — beoordeel die handmatig. De primary key telt nooit mee; die is vervangen door nieuwe anonieme ID's.
+Kolommen met heel veel unieke waarden (vrije tekst, namen, identifiers) worden uitgesloten en de app waarschuwt erover — beoordeel die handmatig. Identificatiekolommen tellen nooit mee: de primary key, bij longitudinale data de sequence key, en elke kolom met het type _ID_. De synthetische data bevat daarvoor nieuwe ID's, dus de afstand ertussen zegt niets over een persoon. De app toont welke kolommen zo zijn uitgesloten. Dezelfde kolommen doen ook niet mee in de vergelijking van correlaties.
 
 !!! warning "Geen formele privacygarantie"
     DCR/NNDR is een statistische schatting, geen formele garantie. Een DPIA blijft vereist vóór publicatie. Gebruik de synthetische data niet als privacyveilig zonder aanvullende beoordeling.

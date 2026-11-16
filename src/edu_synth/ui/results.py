@@ -24,6 +24,7 @@ from edu_synth.core.validate import (
     evaluate_privacy,
     evaluate_sdmetrics,
     evaluate_sequential,
+    id_columns,
     improvement_advice,
     mean_trajectory,
     score_verdict,
@@ -281,8 +282,9 @@ def render(
     synth_name = synthesizer or ("sequential_copula" if modality == "sequential" else "gaussian")
     with st.spinner("Validatie en privacyanalyse berekenen…"):
         report = evaluate(df, synth, metadata_dict or real_metadata_dict)
-        priv = evaluate_privacy(df, synth, primary_key=primary_key)
-        pairs = evaluate_pairs(df, synth)
+        id_cols = id_columns(metadata_dict)
+        priv = evaluate_privacy(df, synth, primary_key=primary_key, id_cols=id_cols)
+        pairs = evaluate_pairs(df, synth, id_cols=id_cols)
         sdm = evaluate_sdmetrics(df, synth, metadata_dict)
         seq = _sequential_report(df, synth, modality, metadata_dict)
     seq_fields = _sequence_fields(modality, metadata_dict)
@@ -342,7 +344,7 @@ def render(
         ["Validatierapport", "Distributies", "Download & Reproductie"]
     )
     with tab_val:
-        _render_validation(report, priv, verdict, pairs, primary_key, sdm, seq)
+        _render_validation(report, priv, verdict, pairs, sdm, seq)
     with tab_dist:
         if seq is not None and seq_fields is not None:
             _render_temporal_plots(df, synth, seq, *seq_fields)
@@ -375,7 +377,6 @@ def _render_validation(
     priv,
     verdict: dict,
     pairs: PairsReport,
-    primary_key: str | None,
     sdm: SDMetricsReport,
     seq: SequentialReport | None = None,
 ) -> None:
@@ -509,10 +510,11 @@ def _render_validation(
                 "een DPIA blijft vereist bij publicatie.**"
             )
 
-    if primary_key is not None:
+    if priv.id_cols:
+        cols = ", ".join(f"**{c}**" for c in priv.id_cols)
         st.info(
-            f"ℹ️ Primary key '{primary_key}' is vervangen door nieuwe anonieme ID's "
-            "en maakt geen deel uit van de privacyberekening."
+            f"ℹ️ Identificatiekolommen tellen niet mee in de privacyberekening: {cols}. "
+            "De synthetische data bevat hiervoor nieuwe ID's."
         )
 
     _render_sdmetrics(sdm)
