@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -39,13 +40,23 @@ _HIGH_CONFIDENCE = 0.9
 class DataSource:
     df: pd.DataFrame
     demo_meta: object | None
-    file_key: str
+    file_key: str  # herkent de dataset; bij een upload naam + inhoud-hash
+    label: str  # naam zoals de gebruiker die ziet
     modality: str | None
     demo_name: str | None
 
     @property
     def type_label(self) -> str:
         return _MODALITY_LABEL.get(self.modality, "Tabular")
+
+
+def upload_key(name: str, data: bytes) -> str:
+    """Sleutel die een upload herkent aan naam én inhoud.
+
+    Alleen de naam is niet genoeg: een nieuwe versie van hetzelfde bestand zou dan
+    de synthese en instellingen van de vorige versie houden.
+    """
+    return f"{name}#{hashlib.sha256(data).hexdigest()[:12]}"
 
 
 @st.cache_data
@@ -107,7 +118,7 @@ def render() -> DataSource | None:
 
         # Wis "all accepted" state als een nieuw bestand geladen wordt
         prev_key = st.session_state.get("_datasource_file_key")
-        new_key = uploaded.name
+        new_key = upload_key(uploaded.name, uploaded.getvalue())
         if prev_key != new_key:
             for k in list(st.session_state.keys()):
                 if k.startswith("all_accepted_"):
@@ -117,7 +128,8 @@ def render() -> DataSource | None:
         return DataSource(
             df=_load_file(uploaded.name, uploaded.getvalue()),
             demo_meta=None,
-            file_key=uploaded.name,
+            file_key=new_key,
+            label=uploaded.name,
             modality=None,
             demo_name=None,
         )

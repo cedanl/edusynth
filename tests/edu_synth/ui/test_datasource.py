@@ -1,7 +1,7 @@
 """Tests voor datasource.py — confidence-splitsing van type-suggesties."""
 
 from edu_synth.core.synthesize import ColumnHint
-from edu_synth.ui.datasource import partition_by_confidence
+from edu_synth.ui.datasource import partition_by_confidence, upload_key
 
 
 def _hint(name: str, confidence: float) -> ColumnHint:
@@ -30,3 +30,11 @@ def test_partition_all_uncertain_when_below_threshold():
     high, low = partition_by_confidence([_hint("a", 0.7), _hint("b", 0.8)])
     assert high == []
     assert [h.name for h in low] == ["a", "b"]
+
+
+def test_upload_key_changes_with_content():
+    assert upload_key("export.csv", b"a,b\n1,2\n") != upload_key("export.csv", b"a,b\n3,4\n")
+
+
+def test_upload_key_stable_for_same_file():
+    assert upload_key("export.csv", b"a,b\n1,2\n") == upload_key("export.csv", b"a,b\n1,2\n")
