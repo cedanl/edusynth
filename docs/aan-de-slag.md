@@ -23,7 +23,7 @@ De app leidt je in drie stappen door de flow: **Data laden → Genereren → Res
 
 ### Stap 1 — Data uploaden
 
-Start de app. Vink eerst de toestemming aan dat je deze data mag verwerken — het uploadveld wordt pas daarna actief. Verwerking vindt volledig lokaal in je browser-sessie plaats; data wordt nergens opgeslagen of verzonden. Sleep daarna een CSV- of Parquet-bestand op het uploadveld. edu-synth toont een preview van de eerste rijen en detecteert automatisch kolomtypes.
+Start de app. Vink eerst de toestemming aan dat je deze data mag verwerken — het uploadveld wordt pas daarna actief. Verwerking vindt volledig lokaal in je browser-sessie plaats; data wordt nergens opgeslagen of verzonden. Sleep daarna een CSV- of Parquet-bestand op het uploadveld. Bij CSV herkent edu-synth het scheidingsteken (komma, puntkomma, tab of pipe) en de tekencodering (UTF-8 of Windows-1252). edu-synth toont een preview van de eerste rijen en detecteert automatisch kolomtypes.
 
 !!! tip "Geschikte data"
     De app werkt het best met tabellen van minimaal 500 rijen. Kleinere datasets leveren minder stabiele correlatieramingen op.

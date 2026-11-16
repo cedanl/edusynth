@@ -110,11 +110,9 @@ def _cmd_validate(args: argparse.Namespace) -> None:
 
 
 def _read(path: Path) -> pd.DataFrame:
-    import pandas as pd
+    from edu_synth.core.io import read_table
 
-    if path.suffix == ".parquet":
-        return pd.read_parquet(path)
-    return pd.read_csv(path)
+    return read_table(path)
 
 
 def _write(df: pd.DataFrame, path: Path) -> None:
