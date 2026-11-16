@@ -1,6 +1,6 @@
 site_name: edu-synth
 site_description: Synthetische data genereren voor Nederlandse onderwijsdatasets
-site_url: https://cedanl.github.io/edu-synth
+site_url: https://cedanl.github.io/edusynth
 repo_url: https://github.com/cedanl/edusynth
 repo_name: cedanl/edusynth
 

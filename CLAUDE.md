@@ -28,19 +28,17 @@ edu-synth is een open-source CEDA/Npuls Streamlit-applicatie die [SDV (Synthetic
 ## Architectuurprincipes
 
 ### App is de primaire interface, CLI is een dun laagje
-De app (`app.py`) is het hoofdproduct. `cli.py` biedt `edu-synth app` (lanceert Streamlit) en batchcommando's (`synthesize`, `validate`). Logica leeft in `synthesize.py` en `validate.py` — nooit in `cli.py` of `app.py`.
+De app (`app.py`) is het hoofdproduct. `cli.py` biedt `edu-synth app` (lanceert Streamlit) en batchcommando's (`synthesize`, `validate`). Logica leeft in `core/synthesize.py` en `core/validate.py` — nooit in `cli.py` of `app.py`.
 
 ### Schema is optioneel
 SDV detecteert kolomtypes automatisch via `detect_from_dataframe`. Een YAML-schema is alleen nodig voor batchverwerking via de CLI wanneer auto-detectie niet volstaat.
 
 ### Strikte dependency-richting
 ```
-synthesize.py ← app.py
-validate.py   ← app.py
-synthesize.py ← cli.py
-validate.py   ← cli.py
+core/ ← ui/ ← app.py
+core/ ← cli.py
 ```
-Nooit omhoog importeren. `synthesize.py` en `validate.py` weten niets van `app.py` of `cli.py`.
+Nooit omhoog importeren. `core/` weet niets van `ui/`, `app.py` of `cli.py`.
 
 ### Progressive disclosure — drie niveaus
 Elke nieuwe UI-feature krijgt een niveau toegewezen. Niveau bepaalt de standaard zichtbaarheid:
@@ -61,17 +59,17 @@ Geen registries, factories of ABCs totdat er een tweede synthesizer-type is.
 ```
 src/edu_synth/
 ├── __init__.py       # publieke API: fit, sample, evaluate
-├── app.py            # Streamlit-app — primaire interface
+├── app.py            # Streamlit-app — primaire interface, dunne orchestrator
 ├── cli.py            # dun — app-launcher + batchcommando's
-├── synthesize.py     # fit() en sample()
-└── validate.py       # evaluate() → Report
+├── core/
+│   ├── synthesize.py # fit() en sample(), tabulair en longitudinaal
+│   ├── validate.py   # evaluate() → Report, privacy (DCR/NNDR), correlaties, tijdsgedrag
+│   └── report_pdf.py # PDF-export van het validatierapport
+└── ui/               # Streamlit-onderdelen: datasource, config, results, stepper, theme
 
 tests/
 ├── fixtures/         # kleine hand-crafted CSV/YAML, WEL in git
-└── edu_synth/       # spiegelt src/edu_synth/ exact
-    ├── test_cli.py
-    ├── test_synthesize.py
-    └── test_validate.py
+└── edu_synth/        # spiegelt src/edu_synth/ exact (core/, ui/, test_cli.py)
 
 docs/                 # MkDocs bronbestanden
 data/                 # gitignored — lokale ontwikkeldata
@@ -145,7 +143,6 @@ Tests draaien zonder echte data en zonder Streamlit te starten — alleen `tests
 
 ## Validatiestandaard
 
-Huidige implementatie: TV-afstand (categorisch) + Wasserstein (numeriek).
-Nog te implementeren: DCR/NNDR privacyvalidatie via `sdmetrics`.
+Huidige implementatie: TV-afstand (categorisch) + Wasserstein (numeriek), correlatiebehoud, tijdsgedrag bij longitudinale data en DCR/NNDR-privacyvalidatie met holdout-vergelijking.
 
-Voeg geen privacyclaims toe aan documentatie zolang DCR/NNDR ontbreekt.
+DCR/NNDR is een statistische schatting, geen garantie. Noem synthetische data in documentatie niet "anoniem" of "privacyveilig" zonder dat voorbehoud.
