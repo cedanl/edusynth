@@ -197,7 +197,7 @@ if step == 1:
 
     if picked is None:
         st.caption(
-            f"Huidige selectie: **{src.file_key}** — kies hierboven een ander "
+            f"Huidige selectie: **{src.label}** — kies hierboven een ander "
             "bestand om te vervangen, of ga verder."
         )
     m1, m2, m3 = st.columns(3)
