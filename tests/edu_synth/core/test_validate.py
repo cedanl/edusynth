@@ -24,6 +24,7 @@ from edu_synth.core.validate import (
     evaluate_privacy,
     evaluate_sdmetrics,
     evaluate_sequential,
+    id_columns,
     improvement_advice,
     mean_trajectory,
     score_verdict,
@@ -1184,3 +1185,70 @@ def test_state_distribution_rows_sum_to_one():
     assert np.allclose(dist.sum(axis=1).to_numpy(), 1.0)
     # In 2019 is iedereen "jaar1".
     assert dist.loc[2019, "jaar1"] == 1.0
+
+
+# ── Identificatiekolommen buiten privacy en correlaties (#112) ─────────────────
+
+
+def _frame_with_ids(n: int, seed: int, id_start: int) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    return pd.DataFrame(
+        {
+            "num_id": np.arange(id_start, id_start + n),
+            "text_id": [f"s{i % 40}" for i in range(n)],  # herhaalt: onder de cardinaliteitsdrempel
+            "leeftijd": rng.integers(17, 40, n),
+            "cijfer": rng.normal(6.5, 1.2, n),
+            "groep": rng.choice(["a", "b", "c"], n),
+        }
+    )
+
+
+def test_id_columns_single_table_metadata():
+    meta = {
+        "primary_key": "pk",
+        "columns": {"pk": {"sdtype": "id"}, "code": {"sdtype": "id"}, "x": {"sdtype": "numerical"}},
+    }
+    assert id_columns(meta) == ["pk", "code"]
+
+
+def test_id_columns_sequential_metadata():
+    meta = {
+        "tables": {
+            "data": {
+                "sequence_key": "student",
+                "sequence_index": "jaar",
+                "columns": {"student": {"sdtype": "id"}, "jaar": {"sdtype": "numerical"}},
+            }
+        }
+    }
+    assert id_columns(meta) == ["student"]
+    assert id_columns(None) == []
+
+
+def test_privacy_excludes_numeric_and_text_ids():
+    real = _frame_with_ids(300, seed=1, id_start=1000)
+    synth = _frame_with_ids(300, seed=2, id_start=9_000_000)  # opnieuw genummerd, ander bereik
+
+    with_ids = evaluate_privacy(real, synth)
+    without_ids = evaluate_privacy(real, synth, id_cols=["num_id", "text_id"])
+
+    assert without_ids.id_cols == ["num_id", "text_id"]
+    assert without_ids.n_numeric_cols == with_ids.n_numeric_cols - 1
+    assert without_ids.n_categorical_cols == with_ids.n_categorical_cols - 1
+    # Met de ID's erbij domineert de afstand tussen willekeurige ID's de ratio.
+    assert with_ids.dcr_ratio > 10 * without_ids.dcr_ratio
+
+
+def test_privacy_excludes_sequence_key_from_metadata():
+    real = pd.read_csv("tests/fixtures/long_jaar_gespreid.csv")
+    meta = {"tables": {"data": {"sequence_key": "student_id", "columns": {}}}}
+    priv = evaluate_privacy(real, real.copy(), id_cols=id_columns(meta))
+    assert priv.id_cols == ["student_id"]
+
+
+def test_pairs_skip_id_columns():
+    real = _frame_with_ids(300, seed=1, id_start=1000)
+    synth = real.assign(num_id=real["cijfer"] * 1000)  # ID correleert nu sterk met cijfer
+    assert any("num_id" in (p["col_a"], p["col_b"]) for p in evaluate_pairs(real, synth).flagged)
+    flagged = evaluate_pairs(real, synth, id_cols=["num_id"]).flagged
+    assert not any("num_id" in (p["col_a"], p["col_b"]) for p in flagged)

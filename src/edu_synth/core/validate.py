@@ -223,16 +223,33 @@ class PrivacyReport:
     n_numeric_cols: int = 0
     n_categorical_cols: int = 0
     excluded_cols: list[str] = field(default_factory=list)
+    id_cols: list[str] = field(default_factory=list)  # identificatiekolommen, tellen niet mee
     reason: str = ""
 
     def passed(self) -> bool:
         return self.available and self.risk_level == "laag"
 
 
+def id_columns(metadata: dict | None) -> list[str]:
+    """Identificatiekolommen volgens de SDV-metadata-dict.
+
+    Dat zijn de primary key, de sequence key en elke kolom met sdtype ``id``. Werkt
+    voor de dict van één tabel en voor de dict met een ``tables``-laag.
+    """
+    tables = (metadata or {}).get("tables")
+    table_dicts = list(tables.values()) if tables else [metadata or {}]
+    found: list[str] = []
+    for table in table_dicts:
+        found += [table.get("primary_key"), table.get("sequence_key")]
+        found += [c for c, info in table.get("columns", {}).items() if info.get("sdtype") == "id"]
+    return list(dict.fromkeys(c for c in found if c))
+
+
 def evaluate_privacy(
     real: pd.DataFrame,
     synth: pd.DataFrame,
     primary_key: str | None = None,
+    id_cols: list[str] | None = None,
 ) -> PrivacyReport:
     """Schat het re-identificatierisico via DCR en NNDR.
 
@@ -247,15 +264,20 @@ def evaluate_privacy(
     onderwijsdata. Numeriek wordt [0, 1]-geschaald, categorisch wordt one-hot
     gecodeerd (nominaal — categorieën liggen onderling even ver uit elkaar).
 
+    Identificatiekolommen (*primary_key* en *id_cols*, zie :func:`id_columns`) tellen
+    niet mee. Synthetische ID's zijn opnieuw genummerd en zeggen niets over een
+    persoon; de afstand tussen willekeurige ID's zou de DCR-ratio vertekenen.
+
     Noot: synthesizer is getraind op ALLE echte data, niet alleen train-split.
     Dit geeft een conservatieve schatting (worst-case benadering).
     """
     from sklearn.neighbors import NearestNeighbors
     from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
 
-    shared = [c for c in real.columns if c in synth.columns]
-    if primary_key and primary_key in shared:
-        shared.remove(primary_key)
+    identifiers = {primary_key, *(id_cols or [])}
+    in_both = [c for c in real.columns if c in synth.columns]
+    shared = [c for c in in_both if c not in identifiers]
+    skipped_ids = [c for c in in_both if c in identifiers]
 
     # Numeriek alleen als de kolom in beide tabellen numeriek is; anders crasht de
     # MinMaxScaler op tekst (zie _is_numeric). De rest gaat one-hot als categorie.
@@ -274,6 +296,7 @@ def evaluate_privacy(
         return PrivacyReport(
             available=False,
             excluded_cols=excluded_cols,
+            id_cols=skipped_ids,
             reason="Geen bruikbare kolommen voor afstandsberekening",
         )
 
@@ -285,6 +308,7 @@ def evaluate_privacy(
         return PrivacyReport(
             available=False,
             excluded_cols=excluded_cols,
+            id_cols=skipped_ids,
             reason="Te weinig rijen voor analyse",
         )
 
@@ -353,6 +377,7 @@ def evaluate_privacy(
         n_numeric_cols=len(numeric_cols),
         n_categorical_cols=len(cat_cols),
         excluded_cols=excluded_cols,
+        id_cols=skipped_ids,
     )
 
 
@@ -373,14 +398,21 @@ class PairsReport:
     reason: str = ""
 
 
-def evaluate_pairs(real: pd.DataFrame, synth: pd.DataFrame) -> PairsReport:
-    """Vergelijk Pearson-correlaties tussen numerieke kolompar in echt vs. synthetisch."""
+def evaluate_pairs(
+    real: pd.DataFrame, synth: pd.DataFrame, id_cols: list[str] | None = None
+) -> PairsReport:
+    """Vergelijk Pearson-correlaties tussen numerieke kolompar in echt vs. synthetisch.
+
+    Identificatiekolommen (*id_cols*) doen niet mee: een correlatie met een
+    opnieuw genummerd ID heeft geen betekenis.
+    """
+    skip = set(id_cols or [])
     # Alleen kolommen die in beide tabellen numeriek zijn — een kolom die SDV naar
     # tekst omzette zou ``.corr()`` laten crashen (zie _is_numeric).
     numeric = [
         c
         for c in real.columns
-        if c in synth.columns and _is_numeric(real[c]) and _is_numeric(synth[c])
+        if c in synth.columns and c not in skip and _is_numeric(real[c]) and _is_numeric(synth[c])
     ]
     if len(numeric) < 2:
         return PairsReport(available=False, flagged=[], reason="Minder dan 2 numerieke kolommen")
