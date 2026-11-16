@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import io
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pandas as pd
 import streamlit as st
+
+from edu_synth.core.io import read_table
 
 if TYPE_CHECKING:
     from edu_synth.core.synthesize import ColumnHint
@@ -50,8 +51,7 @@ class DataSource:
 
 @st.cache_data
 def _load_file(name: str, data: bytes) -> pd.DataFrame:
-    buf = io.BytesIO(data)
-    return pd.read_parquet(buf) if name.endswith(".parquet") else pd.read_csv(buf)
+    return read_table(data, name)
 
 
 @st.cache_data
